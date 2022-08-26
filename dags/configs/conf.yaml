@@ -1,0 +1,16 @@
+# connection properties
+#
+connections:
+  stage:
+    host: DE-FD-00-0406-N
+    db: postgres
+    port: 5432
+    user: postgres
+    pw: postgres
+
+  edwh:
+    host: DE-FD-00-0406-N
+    db: datavault
+    port: 5432
+    user: postgres
+    pw: postgres
