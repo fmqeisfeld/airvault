@@ -1,0 +1,1 @@
+SELECT {src_bk} from stage.{src_table};
