@@ -1,16 +1,23 @@
 # connection properties
 #
-connections:
-  stage:
-    host: DE-FD-00-0406-N
-    db: postgres
-    port: 5432
-    user: postgres
-    pw: postgres
-
-  edwh:
-    host: DE-FD-00-0406-N
+connection:
+    host: 172.20.0.1
     db: datavault
     port: 5432
     user: postgres
     pw: postgres
+    schemas:
+      stage: stage 
+      edwh: vault
+
+hubs:
+  hub_tax_bundle:
+    bk: hk_tax_bundle
+    type: int 
+    overwrite: False
+
+    src: 
+      table: v_report_taxation_bundle
+      bk: tax_bundle_id
+      
+      
