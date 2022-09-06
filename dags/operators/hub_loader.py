@@ -9,37 +9,35 @@ class Hub_Loader(BaseOperator):
     """ TEST DOC FOR HUB LOADER   """    
     #@apply_defaults
     def __init__(self,
-                 conf:dict,                                   
+                 conf:dict,    
+                 hub:str,                           
                  *args,
                  **kwargs):
         
         self.doc_md = __doc__
         super().__init__(*args, **kwargs)
-        
-        
-        tgt_table=list(conf.keys())[0]
-        self.tgt_table=tgt_table
-        
-        self.tgt_bk=conf[tgt_table]['bk']
-        self.tgt_type=conf[tgt_table]['type']
-        
-        self.src_bk=conf[tgt_table]['src']['bk']
-        self.src_table=conf[tgt_table]['src']['table']                   
+                             
                              
         self.sql= open('/opt/airflow/dags/sql/hub_loader.sql','r').read()
         
-        params = {'src_bk':self.src_bk, 
-                  'src_table':self.src_table}
+        params = {'bk_src':conf['hubs'][hub]['src']['bk'],
+                  'rec_src':conf['hubs'][hub]['src']['table'],
+                  'schema_src':conf['connection']['schemas']['stage'],
+                  'table_src':conf['hubs'][hub]['src']['table'],
+                  'schema_tgt':conf['connection']['schemas']['edwh'],
+                  'table_tgt':hub,
+                  'hk_tgt':conf['hubs'][hub]['hk'],
+                  'bk_tgt':conf['hubs'][hub]['src']['bk']}
+                
         
         self.sql = self.sql.format(**params)
+        self.doc=self.sql
 
-    def execute(self, context: Context): 
-        avail_tables =  Variable.get('vault_tables')
-        
-        
+
+    def execute(self, context: Context):        
         self.hook = PostgresHook(postgres_conn_id='pgconn')                                      
-        #self.hook.run(self.sql)
-        result=self.hook.get_records(self.sql)
+        self.hook.run(self.sql)
+        #result=self.hook.get_records(self.sql)
         
         #context['ti'].xcom_push(key='records', value=result)        
         #Variable.set('myvar',{'mykey':'myval'})

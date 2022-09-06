@@ -1,8 +1,8 @@
 # connection properties
 #
 connection:
-    host: 172.20.0.1
-    db: datavault
+    host: 172.28.0.1 # gateway of pg-container
+    db: dv2
     port: 5432
     user: postgres
     pw: postgres
@@ -12,12 +12,21 @@ connection:
 
 hubs:
   hub_tax_bundle:
-    bk: hk_tax_bundle
-    type: int 
-    overwrite: False
+    hk: hk_tax_bundle
+    overwrite: False  
 
     src: 
       table: v_report_taxation_bundle
       bk: tax_bundle_id
+      type: int 
+
+  hub_ziffer:
+    hk: hk_ziffer
+    overwrite: False
+
+    src:
+      table: v_report_dict_ziffer
+      bk: ziffer
+      type: int
       
       

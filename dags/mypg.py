@@ -16,7 +16,6 @@ from airflow.exceptions import AirflowNotFoundException
 from operators.hub_loader import Hub_Loader 
 from operators.hub_creator import Hub_Creator
 
-
 DAG_ID = "extract"
 
 DAG_DIR = Path(__file__).parent
@@ -28,6 +27,7 @@ config_file_path = Path(CONF_FILE_PATH)
 
 
 @task(task_id='connect')
+
 def connect(conf):
     """ 
         connects to dbs
@@ -80,15 +80,35 @@ def mydag():
     if config_file_path.exists():
         with open(config_file_path, "r") as config_file:
             config = yaml.safe_load(config_file)
-        
+    
     with TaskGroup(group_id='hubs') as hub_group:
-        create_hubs = Hub_Creator(task_id="create_hubs", conf=config)
-        load_hubs = Hub_Loader(task_id="load_hubs", conf=config['hubs'])                                        
+        # create hubs if not already present
+        with TaskGroup(group_id='create_hubs') as create_hubs:
+            for i,hub in enumerate(config['hubs']):
+                create_hub = Hub_Creator(task_id=f"create_{hub}", conf=config,hub=hub)
+                #create_hub = DummyOperator(task_id=f"create_{hub}")
+
+        # Hub loader-routine using template sql
+        with TaskGroup(group_id='load_hubs') as load_hubs:
+            for i,hub in enumerate(config['hubs']):                                
+                load_hub = Hub_Loader(task_id=f"load_{hub}", conf=config,hub=hub)
+                #load_hub = DummyOperator(task_id=f"load_{hub}")
+                load_hub.doc_md="""\
+                #Title"
+                Here's a [url](www.airbnb.com)
+                """
+
         create_hubs >> load_hubs
                 
-                                
     
     read_config >> connect(conf=config['connection']) >> get_tables(conns=config['connection']) >> hub_group
+
+
+    # debug                                
+    #hub = 'hub_tax_bundle'
+    #create_hub = Hub_Creator(task_id=f"create_hub", conf=config,hub=hub)
+    #read_config >> connect(conf=config['connection']) >> get_tables(conns=config['connection']) >> create_hub    
+
 
 
 globals()[DAG_ID] = mydag()
