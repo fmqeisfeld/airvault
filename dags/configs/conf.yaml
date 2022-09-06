@@ -11,14 +11,14 @@ connection:
       edwh: vault
 
 hubs:
-  hub_tax_bundle:
-    hk: hk_tax_bundle
-    overwrite: False  
+  hub_tax_bundle:         # name des hubs
+    hk: hk_tax_bundle     # benamung des hashkeys
+    overwrite: False      # drop & recreate ? (tbd)
 
-    src: 
-      table: v_report_taxation_bundle
-      bk: tax_bundle_id
-      type: int 
+    src:                    
+      table: v_report_taxation_bundle # quelle
+      bk: tax_bundle_id               # name des bk-felds
+      type: int                       # typ des bk-felds
 
   hub_ziffer:
     hk: hk_ziffer
@@ -28,5 +28,16 @@ hubs:
       table: v_report_dict_ziffer
       bk: ziffer
       type: int
-      
-      
+  
+links:
+  l_taxbundle_ziffer:
+    hk: hk_l_taxbundle_ziffer
+    overwrite: False
+
+    src:
+      table: v_report_ziffer
+      bks: 
+        tax_bundle_id:
+          type: int
+        ziffer:
+          type: int

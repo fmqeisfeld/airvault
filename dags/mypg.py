@@ -15,6 +15,8 @@ from airflow.exceptions import AirflowNotFoundException
 
 from operators.hub_loader import Hub_Loader 
 from operators.hub_creator import Hub_Creator
+from operators.link_creator import Link_Creator
+from operators.link_loader import Link_Loader
 
 DAG_ID = "extract"
 
@@ -80,7 +82,10 @@ def mydag():
     if config_file_path.exists():
         with open(config_file_path, "r") as config_file:
             config = yaml.safe_load(config_file)
-    
+
+    # ***********************
+    #       HUBS
+    # ***********************
     with TaskGroup(group_id='hubs') as hub_group:
         # create hubs if not already present
         with TaskGroup(group_id='create_hubs') as create_hubs:
@@ -93,15 +98,27 @@ def mydag():
             for i,hub in enumerate(config['hubs']):                                
                 load_hub = Hub_Loader(task_id=f"load_{hub}", conf=config,hub=hub)
                 #load_hub = DummyOperator(task_id=f"load_{hub}")
-                load_hub.doc_md="""\
-                #Title"
-                Here's a [url](www.airbnb.com)
-                """
-
+    
         create_hubs >> load_hubs
                 
+    # ***********************
+    #       LINKS
+    # ***********************
+    with TaskGroup(group_id='links') as link_group:
+        # create links if not already present
+        with TaskGroup(group_id='create_links') as create_links:
+            for i,link in enumerate(config['links']):
+                #create_hub = Hub_Creator(task_id=f"create_{hub}", conf=config,hub=hub)
+                create_link = Link_Creator(task_id=f"create_{link}", conf=config,link=link)
+
+        # Link loader-routine using template sql
+        with TaskGroup(group_id='load_links') as load_links:
+            for i,link in enumerate(config['links']):                                
+                load_link = Link_Loader(task_id=f"load_{link}", conf=config,link=link)
+                #load_link = DummyOperator(task_id=f"load_{link}")
     
-    read_config >> connect(conf=config['connection']) >> get_tables(conns=config['connection']) >> hub_group
+        create_links >> load_links
+    read_config >> connect(conf=config['connection']) >> get_tables(conns=config['connection']) >> [hub_group,link_group]
 
 
     # debug                                
