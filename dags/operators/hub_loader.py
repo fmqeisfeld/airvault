@@ -10,29 +10,40 @@ class Hub_Loader(BaseOperator):
     #@apply_defaults
     def __init__(self,
                  conf:dict,    
-                 hub:str,                           
+                 hub:str,                 
                  *args,
                  **kwargs):
         
         self.doc_md = __doc__
         super().__init__(*args, **kwargs)
                              
-                             
-        self.sql= open('/opt/airflow/dags/sql/hub_loader.sql','r').read()
-        
-        params = {'bk_src':conf['hubs'][hub]['src']['bk'],
-                  'rec_src':conf['hubs'][hub]['src']['table'],
-                  'schema_src':conf['connection']['schemas']['stage'],
-                  'table_src':conf['hubs'][hub]['src']['table'],
-                  'schema_tgt':conf['connection']['schemas']['edwh'],
-                  'table_tgt':hub,
-                  'hk_tgt':conf['hubs'][hub]['hk'],
-                  'bk_tgt':conf['hubs'][hub]['src']['bk']}
-                
-        
-        self.sql = self.sql.format(**params)
-        self.doc=self.sql
+        schema_edwh = Variable.get('SCHEMA_EDWH')                             
+        schema_stage = Variable.get('SCHEMA_STAGE')
+        appts = None #Variable.get('APPTS',default_var=None)  # applied dts. Global Var, set via Webinterface
 
+        self.sql= open('/opt/airflow/dags/sql/hub_loader.sql','r').read()
+        sql_concat=''
+
+        for cur_src,cur_conf in conf['hubs'][hub]['src'].items():
+
+            params={'tenant':cur_conf['tenant'] if cur_conf['tenant'] else "default",
+                    'bkeycode':cur_conf['bkeycode'] if cur_conf['bkeycode'] else "default",
+                    'taskid': self.task_id,
+                    'appts': appts+'::timestamp' if appts else 'current_timestamp',
+                    'rec_src':cur_src,
+                    'bk_src':cur_conf['bk'],
+                    'schema_src':schema_stage,
+                    'table_src':cur_src,
+                    'bk_tgt':conf['hubs'][hub]['bk'],
+                    'hk_tgt':conf['hubs'][hub]['hk'],
+                    'schema_tgt':schema_edwh,
+                    'table_tgt':hub
+            }
+                        
+            sql_concat += '\n'+self.sql.format(**params)
+
+        self.sql=sql_concat
+        self.doc = self.sql
 
     def execute(self, context: Context):        
         self.hook = PostgresHook(postgres_conn_id='pgconn')                                      

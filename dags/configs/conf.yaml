@@ -1,7 +1,6 @@
 # connection properties
-#
 connection:
-    host: 172.28.0.1 # gateway of pg-container
+    host: 172.22.0.1 # gateway of pg-container
     db: dv2
     port: 5432
     user: postgres
@@ -10,34 +9,51 @@ connection:
       stage: stage 
       edwh: vault
 
-hubs:
-  hub_tax_bundle:         # name des hubs
-    hk: hk_tax_bundle     # benamung des hashkeys
-    overwrite: False      # drop & recreate ? (tbd)
+rv:   # raw vault
+  hubs:
+    hub_tax_bundle:         # name des hubs
+      hk: hk_tax_bundle     # benamung des hashkeys
+      bk: tax_bundle_id     # benamung des bks in der zieltabelle
+      overwrite: False      # drop & recreate ? (tbd)
 
-    src:                    
-      table: v_report_taxation_bundle # quelle
-      bk: tax_bundle_id               # name des bk-felds
-      type: int                       # typ des bk-felds
+      src:                    
+        v_report_taxation_bundle:         # quelle
+          bk: tax_bundle_id               # name des bk-felds in quelle
+          bkeycode: default               # collision-code optional, defaults to 'default'
+          tenant: default                 # tenant-id, defaults to 'default'          
 
-  hub_ziffer:
-    hk: hk_ziffer
-    overwrite: False
+        v_report_ziffer:                  # 2te quelle
+          bk: tax_bundle_id               # name des bk-felds in quelle     
+          
 
-    src:
-      table: v_report_dict_ziffer
+    hub_ziffer:
+      hk: hk_ziffer
       bk: ziffer
-      type: int
-  
-links:
-  l_taxbundle_ziffer:
-    hk: hk_l_taxbundle_ziffer
-    overwrite: False
+      overwrite: False
 
-    src:
-      table: v_report_ziffer
-      bks: 
-        tax_bundle_id:
-          type: int
-        ziffer:
-          type: int
+      src:
+        v_report_dict_ziffer:
+          bk: ziffer
+    
+  links:
+    lnk_taxbundle_ziffer:
+      hk: hk_l_taxbundle_ziffer
+      overwrite: False
+
+      src:
+        v_report_ziffer:
+          bkeycode: default
+          tenant: default           
+          bks:
+            - tax_bundle_id
+            - ziffer
+            
+          #cks: # dependent child keys
+          #
+            
+        v_report_taxation_bundle:         
+          bks: 
+            - tax_bundle_id               
+            - ziffer
+          bkeycode: default               
+          tenant: default   

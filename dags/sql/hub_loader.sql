@@ -1,16 +1,36 @@
-with cte (hk,load_dts,rec_src,bk) as (
-	select md5(trim(src.{bk_src}::varchar(256))) 
-	,  current_timestamp 
-	,  '{rec_src}'
-	, src.{bk_src}
+with cte (hk,bk,dv_loadts,dv_appts,dv_recsrc,dv_tenant,dv_bkeycode,dv_taskid) as (
+	select md5(concat_ws('|',
+			   '{tenant}','{bkeycode}',
+			   trim(src.{bk_src}::varchar(256))
+	))
+	, trim(src.{bk_src}::varchar(256))
+	, current_timestamp 
+	, {appts}
+	, '{rec_src}'
+	, '{tenant}'
+	, '{bkeycode}'
+	, '{taskid}	'
 	from {schema_src}.{table_src} src
 )
-insert into {schema_tgt}.{table_tgt} ({hk_tgt},load_dts,rec_src,{bk_tgt})
+insert into {schema_tgt}.{table_tgt} (
+		{hk_tgt}
+	  , {bk_tgt}
+	  , dv_loadts
+	  , dv_appts
+	  , dv_recsrc
+	  , dv_tenant
+	  , dv_bkeycode
+	  , dv_taskid
+	)
 select distinct 
 	hk
-  , load_dts
-  , rec_src
   , bk
+  , dv_loadts
+  , dv_appts
+  , dv_recsrc
+  , dv_tenant
+  , dv_bkeycode
+  , dv_taskid
 from cte
 where not exists 
 (
