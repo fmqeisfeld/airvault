@@ -11,12 +11,12 @@ connection:
 
 rv:   # raw vault
   hubs:
-    hub_tax_bundle:         # name des hubs
-      hk: hk_tax_bundle     # benamung des hashkeys
+    hub_tax_bundle:         # name der hub-tabelle
+      hk: hk_tax_bundle     # benamung des hashkeys in zieltabelle
       bk: tax_bundle_id     # benamung des bks in der zieltabelle
       overwrite: False      # drop & recreate ? (tbd)
 
-      src:                    
+      src:                  # hub kann mehrere quellen haben         
         v_report_taxation_bundle:         # quelle
           bk: tax_bundle_id               # name des bk-felds in quelle
           bkeycode: default               # collision-code optional, defaults to 'default'
@@ -36,24 +36,27 @@ rv:   # raw vault
           bk: ziffer
     
   links:
-    lnk_taxbundle_ziffer:
-      hk: hk_l_taxbundle_ziffer
+    lnk_taxbundle_ziffer:           # name der link-tabelle
+      hk: hk_l_taxbundle_ziffer     # pk der link-tabelle
       overwrite: False
 
-      src:
-        v_report_ziffer:
-          bkeycode: default
-          tenant: default           
-          bks:
-            - tax_bundle_id
-            - ziffer
+      src:                          # link kann mehrere quellen haben
+        v_report_ziffer:            # erste quelle
+          bkeycode: default         # optionaler collision code (geht ein in hash, defaults to 'default')
+          tenant: default           # optional für multi-tenancy (geht in hash rein, defaults to 'default')
+          bks:                      # link verknüpft mehrere hubs -> mindestens 2 bks pro quelle nötig
+            ziffer: hk_ziffer       # bk aus quelle und name des gehashten ergebnisses in link-tabelle
+            tax_bundle_id: hk_tax_bundle
             
-          #cks: # dependent child keys
-          #
+          cks:                  # child keys (geht nicht in hash rein und hat auch keinen zugeh. hub)
+            - snapshot_version
+          
             
-        v_report_taxation_bundle:         
-          bks: 
-            - tax_bundle_id               
-            - ziffer
+        v_report_taxation_bundle: # 2te quelle     
           bkeycode: default               
-          tenant: default   
+          tenant: default               
+          bks:                   # reihenfolge muss nicht identisch sein mit vorheriger src
+            tax_bundle_id: hk_tax_bundle # bks in src müssen auch nicht unbedingt gleich heissen
+            ziffer: hk_ziffer
+            dossier_uuid: NULL   # geht nicht in hash mit rein, wird aber mitgeschlepppt aus gründen der wiederherstellbarkeit der quelle
+                                 # da die vorherige quelle diesen key nicht hat, wird in den entsprechenden zeilen '-1' (zero key) eingetragen

@@ -148,13 +148,13 @@ def mydag():
                                            conf=config['rv'],
                                            link=link)
 
-    #     # Link loader-routine using template sql
-    #     with TaskGroup(group_id='load_links') as load_links:
-    #         for i,link in enumerate(config['links']):                                
-    #             load_link = Link_Loader(task_id=f"load_{link}", conf=config,link=link)
-    #             #load_link = DummyOperator(task_id=f"load_{link}")
+        # Link loader-routine using template sql
+        with TaskGroup(group_id='load_links') as load_links:
+            for i,link in enumerate(config['rv']['links']):                                
+                load_link = Link_Loader(task_id=f"load_{link}", conf=config['rv'],link=link)
+                #load_link = DummyOperator(task_id=f"load_{link}")
     
-    #     create_links >> load_links
+        create_links >> load_links
     # read_config >> connect(conf=config['connection']) >> get_tables(conns=config['connection']) >> [hub_group,link_group]
 
     #read_config >> set_vars(SCHEMA_STAGE=SCHEMA_STAGE,SCHEMA_EDWH=SCHEMA_EDWH) 
@@ -163,7 +163,7 @@ def mydag():
     # debug                                
     #hub = 'hub_tax_bundle'
     #create_hub = Hub_Creator(task_id=f"create_hub", conf=config,hub=hub)
-    read_config >> set_vars(conf=config) >> connect(conf=config['connection']) >> get_tables(conns=config['connection']) >> hub_group    
+    read_config >> set_vars(conf=config) >> connect(conf=config['connection']) >> get_tables(conns=config['connection']) >> [hub_group,link_group]
 
 
 

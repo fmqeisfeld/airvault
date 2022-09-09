@@ -1,6 +1,7 @@
 CREATE TABLE {schema}.{link} (
 	{hk} varchar(256) NOT NULL,
-	{bk_list}
+	{hk_list_create},
+	{bk_list_create},
 	-- technical fields
 	DV_LOADTS timestamp NULL,
 	DV_APPTS timestamp NULL,

@@ -17,19 +17,39 @@ class Link_Creator(BaseOperator):
 
         self.link=link
         self.sql= open('/opt/airflow/dags/sql/link_creator.sql','r').read()
+
+        schema_edwh = Variable.get('SCHEMA_EDWH')
         
-        # dynamically create list of bk's
-        link_bks_dict=conf['links'][link]['src']['bks']
-        link_bks=''        
-        for key,val in link_bks_dict.items():        
-            link_bks += key + ' ' + val['type'] +' NOT NULL ,'    
-        
+        # collect bks -> hks mappping from all sources
+        bk_list=list()
+        hk_list=list()
+
+        for cur_src, cur_conf in conf['links'][link]['src'].items():            
+            bk_list +=[x for x in cur_conf['bks'].keys()]
+            hk_list +=[x for x in cur_conf['bks'].values()]
+
+        # das brauche ich
+        # ich möchte, dass der user in conf später irgendwann auch die reihenfolge seiner quellen und die bks pro quelle ändern darf.
+        # deswegen brauche ich diese sortierten dicts
+
+        bk_hk_dict = dict(zip(bk_list,hk_list))
+        bk_hk_dict_sorted=dict(sorted(bk_hk_dict.items()))
+        hk_bk_dict_sorted=dict(zip([x for x in bk_hk_dict_sorted.values()],[x for x in bk_hk_dict_sorted.keys()]))
+
+        hk_unique = [ f'{x} varchar(256) NOT NULL' for x in hk_bk_dict_sorted.keys() if x != None]
+        hk_list_create_str = ','.join(hk_unique)
+
+        bk_list_create = [ f'{x} varchar(256) NOT NULL' for x in hk_bk_dict_sorted.values()]
+        bk_list_create_str = ','.join(bk_list_create)
+
+
         params = {
-            'schema':conf['connection']['schemas']['edwh'],
+            'schema':schema_edwh,
             'link':link,
             'hk':conf['links'][link]['hk'],
-            'bk_list':link_bks
-        }        
+            'bk_list_create':bk_list_create_str,
+            'hk_list_create':hk_list_create_str
+        }     
 
         self.sql = self.sql.format(**params)
         self.doc = self.sql
