@@ -1,7 +1,6 @@
 # connection properties
-#
 connection:
-    host: 172.28.0.1 # gateway of pg-container
+    host: 172.22.0.1 # gateway of pg-container
     db: dv2
     port: 5432
     user: postgres
@@ -10,34 +9,54 @@ connection:
       stage: stage 
       edwh: vault
 
-hubs:
-  hub_tax_bundle:         # name des hubs
-    hk: hk_tax_bundle     # benamung des hashkeys
-    overwrite: False      # drop & recreate ? (tbd)
+rv:   # raw vault
+  hubs:
+    hub_tax_bundle:         # name der hub-tabelle
+      hk: hk_tax_bundle     # benamung des hashkeys in zieltabelle
+      bk: tax_bundle_id     # benamung des bks in der zieltabelle
+      overwrite: False      # drop & recreate ? (tbd)
 
-    src:                    
-      table: v_report_taxation_bundle # quelle
-      bk: tax_bundle_id               # name des bk-felds
-      type: int                       # typ des bk-felds
+      src:                  # hub kann mehrere quellen haben         
+        v_report_taxation_bundle:         # quelle
+          bk: tax_bundle_id               # name des bk-felds in quelle
+          bkeycode: default               # collision-code optional, defaults to 'default'
+          tenant: default                 # tenant-id, defaults to 'default'          
 
-  hub_ziffer:
-    hk: hk_ziffer
-    overwrite: False
+        v_report_ziffer:                  # 2te quelle
+          bk: tax_bundle_id               # name des bk-felds in quelle     
+          
 
-    src:
-      table: v_report_dict_ziffer
+    hub_ziffer:
+      hk: hk_ziffer
       bk: ziffer
-      type: int
-  
-links:
-  l_taxbundle_ziffer:
-    hk: hk_l_taxbundle_ziffer
-    overwrite: False
+      overwrite: False
 
-    src:
-      table: v_report_ziffer
-      bks: 
-        tax_bundle_id:
-          type: int
-        ziffer:
-          type: int
+      src:
+        v_report_dict_ziffer:
+          bk: ziffer
+    
+  links:
+    lnk_taxbundle_ziffer:           # name der link-tabelle
+      hk: hk_l_taxbundle_ziffer     # pk der link-tabelle
+      overwrite: False
+
+      src:                          # link kann mehrere quellen haben
+        v_report_ziffer:            # erste quelle
+          bkeycode: default         # optionaler collision code (geht ein in hash, defaults to 'default')
+          tenant: default           # optional für multi-tenancy (geht in hash rein, defaults to 'default')
+          bks:                      # link verknüpft mehrere hubs -> mindestens 2 bks pro quelle nötig
+            ziffer: hk_ziffer       # bk aus quelle und name des gehashten ergebnisses in link-tabelle
+            tax_bundle_id: hk_tax_bundle
+            
+          cks:                  # child keys (geht nicht in hash rein und hat auch keinen zugeh. hub)
+            - snapshot_version
+          
+            
+        v_report_taxation_bundle: # 2te quelle     
+          bkeycode: default               
+          tenant: default               
+          bks:                   # reihenfolge muss nicht identisch sein mit vorheriger src
+            tax_bundle_id: hk_tax_bundle # bks in src müssen auch nicht unbedingt gleich heissen
+            ziffer: hk_ziffer
+            dossier_uuid: NULL   # geht nicht in hash mit rein, wird aber mitgeschlepppt aus gründen der wiederherstellbarkeit der quelle
+                                 # da die vorherige quelle diesen key nicht hat, wird in den entsprechenden zeilen '-1' (zero key) eingetragen

@@ -6,11 +6,9 @@ from airflow.providers.postgres.hooks.postgres import PostgresHook
 from airflow.models import Variable
 
 class Hub_Creator(BaseOperator):  
-    """ TEST DOC FOR HUB CREATOR """    
-    #@apply_defaults
     def __init__(self,
                  conf:dict,
-                 hub:str,                                   
+                 hub:str,
                  *args,
                  **kwargs):
         
@@ -18,12 +16,12 @@ class Hub_Creator(BaseOperator):
 
         self.hub=hub
         self.sql= open('/opt/airflow/dags/sql/hub_creator.sql','r').read()
-        
-        params = {'schema':conf['connection']['schemas']['edwh'],
+        schema_edwh = Variable.get('SCHEMA_EDWH')
+
+        params = {'schema':schema_edwh,
                   'hub':hub,
                   'hk':conf['hubs'][hub]['hk'],
-                  'bk':conf['hubs'][hub]['src']['bk'],
-                  'bk_type':conf['hubs'][hub]['src']['type']
+                  'bk':conf['hubs'][hub]['bk'],
                   }
         
         self.sql = self.sql.format(**params)
@@ -31,8 +29,9 @@ class Hub_Creator(BaseOperator):
 
     def execute(self, context: Context): 
         vault_tables = Variable.get('vault_tables')
-
+        
         if not self.hub in vault_tables:
+            self.log.info('trying to create new table')
             self.hook = PostgresHook(postgres_conn_id='pgconn')                                      
-            self.hook.run(self.sql)
-            pass
+            self.hook.run(self.sql)            
+                
