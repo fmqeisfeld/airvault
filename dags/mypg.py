@@ -15,10 +15,15 @@ from airflow.exceptions import AirflowNotFoundException
 
 
 from airflow.operators.python_operator import PythonOperator
+
+from operators.hub_stager import Hub_Stager
+from operators.link_stager import Link_Stager
+from operators.sat_stager import Sat_Stager
+
+
 from operators.hub_loader import Hub_Loader 
-from operators.hub_creator import Hub_Creator
-from operators.link_creator import Link_Creator
 from operators.link_loader import Link_Loader
+from operators.sat_loader import Sat_Loader
 
 from collections import defaultdict
 
@@ -70,7 +75,7 @@ def get_tables(conns):
     """
     queries the information schema to retrieve the available tables and saves the list as global var
     """     
-    #print(conf)
+    # edwh tables
     hook = PostgresHook(postgres_conn_id='pgconn')                                      
     sql = 'select table_name from information_schema."tables" where table_schema = \'{tbl}\';'.format(tbl=conns['schemas']['edwh'])
     result=hook.get_records(sql)        
@@ -81,11 +86,14 @@ def get_tables(conns):
 @task(task_id='set_vars')
 def set_vars(conf:dict):
     """ Sets global vars"""
+    SCHEMA_SOURCE = conf['connection']['schemas']['source']
     SCHEMA_STAGE = conf['connection']['schemas']['stage']
     SCHEMA_EDWH = conf['connection']['schemas']['edwh']          
 
     Variable.set('SCHEMA_STAGE',SCHEMA_STAGE)
     Variable.set('SCHEMA_EDWH',SCHEMA_EDWH)
+    Variable.set('SCHEMA_SOURCE',SCHEMA_SOURCE)
+    Variable.set('MAXVARCHAR',256)
 
 @dag(
     dag_id=DAG_ID,
@@ -113,48 +121,55 @@ def mydag():
     # Reason: Put logic outside of dag into separate Task/Operator
     # c.f.: https://www.astronomer.io/blog/7-common-errors-to-check-when-debugging-airflow-dag/
 
+
     # ***********************
-    #       RV HUBS
+    #       STAGING
     # ***********************
-    with TaskGroup(group_id='hubs') as hub_group:
-        # create hubs if not already present
-        with TaskGroup(group_id='create_hubs') as create_hubs:
+    with TaskGroup(group_id='STAGING') as staging_group:
+        with TaskGroup(group_id='stg_hubs') as stg_hub_group:    
             for i,hub in enumerate(config['rv']['hubs']):
-                create_hub = Hub_Creator(task_id=f"create_{hub}", 
-                                        conf=config['rv'],
+                stage_hub = Hub_Stager(task_id=f"stage_{hub}", 
+                                        conf=config,
                                         hub=hub)
-
-                #create_hub = DummyOperator(task_id=f"create_{hub}")
-
-        # Hub loader-routine using template sql
+                
+        with TaskGroup(group_id='stg_links') as stg_lnk_group:    
+            for i,lnk in enumerate(config['rv']['links']):
+                stage_lnk = Link_Stager(task_id=f"stage_{lnk}", 
+                                        conf=config,
+                                        lnk=lnk)       
+                
+        with TaskGroup(group_id='stg_sats') as stg_sat_group:    
+            for i,sat in enumerate(config['rv']['sats']):
+                stage_sat = Sat_Stager(task_id=f"stage_{sat}", 
+                                        conf=config,
+                                        sat=sat)                           
+    # ***********************
+    #       RAW VAULT
+    # ***********************
+    with TaskGroup(group_id='LOAD_RAW_VAULT') as rv_group:
+        # ***********************
+        #       RV HUBS
+        # ***********************
         with TaskGroup(group_id='load_hubs') as load_hubs:
             for i,hub in enumerate(config['rv']['hubs']):                                
                 load_hub = Hub_Loader(task_id=f"load_{hub}", 
-                                      conf=config['rv'],
-                                      hub=hub)
-                #load_hub = DummyOperator(task_id=f"load_{hub}")
-    
-        create_hubs >> load_hubs
-                
-    # ***********************
-    #       LINKS
-    # ***********************
-    with TaskGroup(group_id='links') as link_group:
-        # create links if not already present
-        with TaskGroup(group_id='create_links') as create_links:
-            for i,link in enumerate(config['rv']['links']):
-                #create_hub = Hub_Creator(task_id=f"create_{hub}", conf=config,hub=hub)
-                create_link = Link_Creator(task_id=f"create_{link}", 
-                                           conf=config['rv'],
-                                           link=link)
-
-        # Link loader-routine using template sql
+                                    conf=config,
+                                    hub=hub)                            
+                    
+        # ***********************
+        #       RV LINKS
+        # ***********************
         with TaskGroup(group_id='load_links') as load_links:
-            for i,link in enumerate(config['rv']['links']):                                
-                load_link = Link_Loader(task_id=f"load_{link}", conf=config['rv'],link=link)
-                #load_link = DummyOperator(task_id=f"load_{link}")
-    
-        create_links >> load_links
+            for i,lnk in enumerate(config['rv']['links']):                                
+                load_link = Link_Loader(task_id=f"load_{lnk}", conf=config,lnk=lnk)
+                
+        # ***********************
+        #       RV SATS
+        # ***********************
+        with TaskGroup(group_id='load_sats') as load_sats:
+            for i,sat in enumerate(config['rv']['sats']):                                
+                load_sat = Sat_Loader(task_id=f"load_{sat}", conf=config,sat=sat)                
+        
     # read_config >> connect(conf=config['connection']) >> get_tables(conns=config['connection']) >> [hub_group,link_group]
 
     #read_config >> set_vars(SCHEMA_STAGE=SCHEMA_STAGE,SCHEMA_EDWH=SCHEMA_EDWH) 
@@ -163,7 +178,10 @@ def mydag():
     # debug                                
     #hub = 'hub_tax_bundle'
     #create_hub = Hub_Creator(task_id=f"create_hub", conf=config,hub=hub)
-    read_config >> set_vars(conf=config) >> connect(conf=config['connection']) >> get_tables(conns=config['connection']) >> [hub_group,link_group]
+    
+    #read_config >> set_vars(conf=config) >> connect(conf=config['connection']) >> get_tables(conns=config['connection']) >> rv_group #[hub_group,link_group]
+    
+    read_config >> set_vars(conf=config) >> connect(conf=config['connection']) >> get_tables(conns=config['connection']) >> staging_group >> rv_group
 
 
 
