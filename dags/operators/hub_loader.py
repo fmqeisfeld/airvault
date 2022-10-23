@@ -4,9 +4,11 @@ from airflow.utils.decorators import apply_defaults
 from airflow.providers.postgres.hooks.postgres import PostgresHook
 from airflow.providers.postgres.operators.postgres import PostgresOperator
 from airflow.models import Variable
+from collections import defaultdict
+
 
 class Hub_Loader(BaseOperator):  
-    """ TEST DOC FOR HUB LOADER   """    
+    """ TEST DOC   """    
     #@apply_defaults
     def __init__(self,
                  conf:dict,    
@@ -19,35 +21,87 @@ class Hub_Loader(BaseOperator):
                              
         schema_edwh = Variable.get('SCHEMA_EDWH')                             
         schema_stage = Variable.get('SCHEMA_STAGE')
-        appts = None #Variable.get('APPTS',default_var=None)  # applied dts. Global Var, set via Webinterface
-
-        self.sql= open('/opt/airflow/dags/sql/hub_loader.sql','r').read()
-        sql_concat=''
-
-        for cur_src,cur_conf in conf['hubs'][hub]['src'].items():
-
-            params={'tenant':cur_conf['tenant'] if cur_conf['tenant'] else "default",
-                    'bkeycode':cur_conf['bkeycode'] if cur_conf['bkeycode'] else "default",
-                    'taskid': self.task_id,
-                    'appts': appts+'::timestamp' if appts else 'current_timestamp',
-                    'rec_src':cur_src,
-                    'bk_src':cur_conf['bk'],
-                    'schema_src':schema_stage,
-                    'table_src':cur_src,
-                    'bk_tgt':conf['hubs'][hub]['bk'],
-                    'hk_tgt':conf['hubs'][hub]['hk'],
-                    'schema_tgt':schema_edwh,
-                    'table_tgt':hub
-            }
-                        
-            sql_concat += '\n'+self.sql.format(**params)
-
-        self.sql=sql_concat
+        schema_source = Variable.get('SCHEMA_SOURCE')
+        
+        maxvarchar = Variable.get('MAXVARCHAR')        
+        appts = None #Variable.get('APPTS',default_var=None)  # applied dts. Global Var, set via Webinterface                        
+        task_id=self.task_id
+                
+        src_cols=defaultdict(list,{})
+        src_hub=defaultdict(list,{})           
+        self.hook = PostgresHook(postgres_conn_id='pgconn')     
+        
+        for src in conf['rv']['hubs'][hub]['src'].keys():
+            sql=f"""SELECT column_name, data_type 
+                    FROM information_schema.columns
+                    WHERE table_schema = \'{schema_source}\'
+                    AND table_name   = \'{src}\';"""
+            
+            records=self.hook.get_records(sql)
+            src_cols[src]=[i[0] for i in records]
+            src_hub[hub].append(src)  
+            
+        conf=conf['rv']
+        
+        for hub,tables in src_hub.items():            
+            hk=conf['hubs'][hub]['hk']
+            bk_tgt=conf['hubs'][hub]['bk']
+            #######################
+            #     CREATE SQL
+            #######################
+            sql=f"""CREATE TABLE IF NOT EXISTS {schema_edwh}.{hub} (
+            --bk--
+            {bk_tgt} varchar({maxvarchar}) NOT NULL,
+            --hk--
+            {hk} varchar({maxvarchar}) NOT NULL,
+            --meta--    
+            DV_LOADTS timestamp NULL,
+            DV_APPTS timestamp NULL,
+            DV_RECSRC varchar({maxvarchar}) NULL,
+            DV_TENANT varchar({maxvarchar}) NULL,
+            DV_BKEYCODE varchar({maxvarchar}) NULL,
+            DV_TASKID varchar({maxvarchar}) NULL        
+            );
+            """
+            
+            self.sql=sql
+                
+            
+            for table_name in tables:                                        
+                ######################
+                #   INSERT SQL
+                #######################                                   
+                sql=f"""INSERT INTO {schema_edwh}.{hub} SELECT        
+                --bk--
+                {bk_tgt},        
+                --hk--
+                {hk},
+                --meta--
+                current_timestamp,
+                DV_APPTS,
+                DV_RECSRC,
+                DV_TENANT,
+                DV_BKEYCODE,        
+                '{task_id}'
+                FROM {schema_stage}.{table_name}__{hub} src
+                WHERE NOT EXISTS (
+                SELECT 1 
+                FROM {schema_edwh}.{hub} tgt
+                WHERE src.{hk} = tgt.{hk}
+                )
+                ;        
+                """
+                self.sql += f"\n{sql}"
+        
         self.doc = self.sql
-
+                    
     def execute(self, context: Context):        
+        
+        
+        
         self.hook = PostgresHook(postgres_conn_id='pgconn')                                      
         self.hook.run(self.sql)
+        
         #result=self.hook.get_records(self.sql)
         
         #context['ti'].xcom_push(key='records', value=result)        

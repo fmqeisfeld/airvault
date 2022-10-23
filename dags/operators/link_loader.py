@@ -3,99 +3,109 @@ from airflow.models.taskinstance import Context
 from airflow.utils.decorators import apply_defaults
 from airflow.providers.postgres.hooks.postgres import PostgresHook
 from airflow.models import Variable
+from collections import defaultdict
 
 class Link_Loader(BaseOperator):  
     #@apply_defaults
     def __init__(self,
                  conf:dict,    
-                 link:str,                           
+                 lnk:str,                           
                  *args,
                  **kwargs):
                 
         super().__init__(*args, **kwargs)
                              
-        schema_edwh = Variable.get('SCHEMA_EDWH')
+        schema_edwh = Variable.get('SCHEMA_EDWH')                             
         schema_stage = Variable.get('SCHEMA_STAGE')
+        schema_source = Variable.get('SCHEMA_SOURCE')
+        
+        maxvarchar = Variable.get('MAXVARCHAR')        
+        appts = None #Variable.get('APPTS',default_var=None)  # applied dts. Global Var, set via Webinterface                        
+        task_id=self.task_id
+                
+        src_lnk_cols=defaultdict(list,{})
+        src_lnk=defaultdict(list,{})           
+        self.hook = PostgresHook(postgres_conn_id='pgconn')  
+        
+        for src in conf['rv']['links'][lnk]['src'].keys():             
+            sql=f"""SELECT column_name, data_type 
+                   FROM information_schema.columns
+                   WHERE table_schema = \'{schema_source}\'
+                   AND table_name   = \'{src}\';"""
 
-        self.sql= open('/opt/airflow/dags/sql/link_loader.sql','r').read()
-        appts = None #Variable.get('APPTS',default_var=None)  # applied dts. Global Var, set via Webinterface        
-        sql_concat=''
-
-        # collect bks -> hks mappping from all sources
-        bk_list=list() # total
-        hk_list=list() # total
-        bk_hk_obj={} # per source
-
-        for cur_src, cur_conf in conf['links'][link]['src'].items():
+            records=self.hook.get_records(sql)
             
-            #link_bks_dict={**link_bks_dict,**cur_conf['bks']} # merge dicts
-            #print(link_bks_dict)
-            bk_list +=[x for x in cur_conf['bks'].keys()]
-            hk_list +=[x for x in cur_conf['bks'].values()]
-            bk_hk_obj[cur_src]=cur_conf['bks']
-
-
-        # das brauche ich
-        # ich möchte, dass der user in conf später irgendwann auch die reihenfolge seiner quellen und die bks pro quelle ändern darf.
-        # deswegen brauche ich diese sortierten dicts
-        bk_hk_dict = dict(zip(bk_list,hk_list))
-        bk_hk_dict_sorted=dict(sorted(bk_hk_dict.items()))
-        hk_bk_dict_sorted=dict(zip([x for x in bk_hk_dict_sorted.values()],[x for x in bk_hk_dict_sorted.keys()]))
-
-        hk_unique = [ x for x in hk_bk_dict_sorted.keys() if x != None]
-        hk_list_keys_str = ','.join(hk_unique)
-
-        bk_list_keys = list(hk_bk_dict_sorted.values())
-        bk_list_keys_str = ','.join(bk_list_keys)
-
-
-        for cur_src,cur_conf in conf['links'][link]['src'].items():
+            src_lnk_cols[src]=[i[0] for i in records]
+            src_lnk[lnk].append(src)            
+        
+        conf=conf['rv']
+        
+        for link,tables in src_lnk.items():            
+            hk=conf['links'][link]['hk']
+            hks=conf['links'][link]['hks']
+                    
+            hks_list=[f"{x} varchar({maxvarchar}) NOT NULL" for x in hks]
+            hks_def_list_str=",\n\t".join(hks_list)    
+            hks_val_list_str=",\n\t".join(hks)    
             
-            tenant= cur_conf['tenant'] if cur_conf['tenant'] else "default"
-            bkeycode = cur_conf['bkeycode'] if cur_conf['bkeycode'] else "default"
-
-            cur_obj=bk_hk_obj[cur_src]
-            cur_obj_inv=dict(zip(cur_obj.values(),cur_obj.keys()))
-
-            # hk_list für INSERT
-            hk_list_vals = list(map(lambda x: 
-                    f"md5(CONCAT_WS('|',\'{tenant}\',\'{bkeycode}\', trim({x}::varchar(256))))",
-                    [cur_obj_inv[x] for x in hk_unique]))
-
-            hk_list_vals_str=',\n'.join(hk_list_vals)
-
-            # bk_list für INSERT
-            bk_list_vals = [cur_obj_inv[y] if y in cur_obj_inv.keys() else "\'-1\'" for y in hk_bk_dict_sorted.keys()]
-            bk_list_vals_str="::varchar(256),\n".join(bk_list_vals) + "::varchar(256)"
-
-            concat_list = [cur_obj_inv[y] for y in hk_bk_dict_sorted.keys() if y in cur_obj_inv.keys() and y]
-            concat_list_str =f"concat_ws('|',\'{tenant}\',\'{bkeycode}\'," +','.join(list(map(lambda x:f'{x}::varchar(256)',concat_list)))+')'
-
+            cks=conf['links'][link]['cks'].values()
+            cks_list=[f"{x} varchar({maxvarchar})" for x in cks]
+            cks_def_list_str=",\n\t".join(cks_list)
+            cks_val_list_str=",\n\t".join(cks)
             
-            params={'tenant': tenant,
-                    'bkeycode':bkeycode,
-                    'taskid': self.task_id,
-                    'appts':'appts::timestamp' if appts else 'current_timestamp',
-                    'rec_src':cur_src,
-                    #            
-                    'schema_src':schema_stage,
-                    'table_src':cur_src,
-                    'schema_tgt':schema_edwh,
-                    'table_tgt':link,
-                    #
-                    'hk_list_keys':hk_list_keys_str,
-                    'bk_list_keys':bk_list_keys_str,
-                    'hk_list_vals':hk_list_vals_str,
-                    'bk_list_vals':bk_list_vals_str, 
-                    'concat_str':concat_list_str,
-                    'hk_tgt':conf['links'][link]['hk']
-            }
-
-            #print(sql.format(**params))
-            sql_concat += '\n'+ self.sql.format(**params)
-
-
-        self.sql = sql_concat
+            
+            #######################
+            #     CREATE SQL
+            #######################
+            sql=f"""CREATE TABLE IF NOT EXISTS  {schema_edwh}.{link} (
+            --hk--
+            {hk} varchar({maxvarchar}) NOT NULL,
+            --hks--
+            {hks_def_list_str},
+            --cks--
+            {cks_def_list_str},    
+            --meta--    
+            DV_LOADTS timestamp NULL,
+            DV_APPTS timestamp NULL,
+            DV_RECSRC varchar({maxvarchar}) NULL,
+            DV_TENANT varchar({maxvarchar}) NULL,
+            DV_BKEYCODE varchar({maxvarchar}) NULL,
+            DV_TASKID varchar({maxvarchar}) NULL        
+            );
+            """
+            
+            self.sql=sql
+        
+    
+            for table_name in tables:                                                                                        
+                ######################
+                #   INSERT SQL
+                #######################                                   
+                sql=f"""INSERT INTO {schema_edwh}.{link} SELECT
+                --hk--
+                {hk},
+                --hks--
+                {hks_val_list_str},        
+                --cks--
+                {cks_val_list_str},
+                --meta--
+                current_timestamp,
+                DV_APPTS,
+                DV_RECSRC,
+                DV_TENANT,
+                DV_BKEYCODE,        
+                '{task_id}'
+                FROM {schema_stage}.{table_name}__{link} src
+                WHERE NOT EXISTS (
+                    SELECT 1 
+                    FROM {schema_edwh}.{link} tgt
+                    WHERE src.{hk} = tgt.{hk}
+                )
+                ;        
+                """
+                self.sql += f"\n{sql}"
+        
+        
         self.doc=self.sql
 
 
