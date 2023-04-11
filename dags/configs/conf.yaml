@@ -1,7 +1,7 @@
 # connection properties
 connection:
-    host: 172.22.0.1 # gateway of pg-container
-    db: dv2
+    host: postgres # gateway of pg-container
+    db: postgres
     port: 5432
     user: postgres
     pw: postgres
@@ -42,8 +42,8 @@ rv:   # raw vault
     
   links:
     lnk_taxbundle_ziffer:           # name der link-tabelle
-      hk: hk_l_taxbundle_ziffer     # pk der link-tabelle
-      hks:                          # hks der hubs
+      hk: hk_l_taxbundle_ziffer     # name von pk der link-tabelle
+      hks:                          # namen der hks der hubs
         - hk_ziffer
         - hk_tax_bundle
       overwrite: False
