@@ -27,19 +27,19 @@ class Sat_Loader(BaseOperator):
         src_sat=defaultdict(list,{})           
         self.hook = PostgresHook(postgres_conn_id='pgconn')  
         
-        conf=conf['rv']
+        # conf=conf['rv'] # wird bereits in dag gemacht
         
         for sat,sat_obj in conf['sats'].items():
             for src in sat_obj['src'].keys():
                 
-                sql=f"""SELECT column_name, data_type 
-                    FROM information_schema.columns
-                    WHERE table_schema = \'{schema_source}\'
-                    AND table_name   = \'{src}\';"""
+                #sql=f"""SELECT column_name, data_type 
+                #    FROM information_schema.columns
+                #    WHERE table_schema = \'{schema_source}\'
+                #    AND table_name   = \'{src}\';"""
 
-                records=self.hook.get_records(sql)
+                #records=self.hook.get_records(sql)
                 
-                src_sat_cols[src]=[i[0] for i in records]
+                #src_sat_cols[src]=[i[0] for i in records]
                 src_sat[sat].append(src)           
         
         

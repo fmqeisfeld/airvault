@@ -27,7 +27,7 @@ class Link_Loader(BaseOperator):
         src_lnk=defaultdict(list,{})           
         self.hook = PostgresHook(postgres_conn_id='pgconn')  
         
-        for src in conf['rv']['links'][lnk]['src'].keys():             
+        for src in conf['links'][lnk]['src'].keys():             
             sql=f"""SELECT column_name, data_type 
                    FROM information_schema.columns
                    WHERE table_schema = \'{schema_source}\'
@@ -38,7 +38,7 @@ class Link_Loader(BaseOperator):
             src_lnk_cols[src]=[i[0] for i in records]
             src_lnk[lnk].append(src)            
         
-        conf=conf['rv']
+        # conf=conf['rv'] # wird bereits in dag gemacht
         
         for link,tables in src_lnk.items():            
             hk=conf['links'][link]['hk']
@@ -47,11 +47,17 @@ class Link_Loader(BaseOperator):
             hks_list=[f"{x} varchar({maxvarchar}) NOT NULL" for x in hks]
             hks_def_list_str=",\n\t".join(hks_list)    
             hks_val_list_str=",\n\t".join(hks)    
-            
-            cks=conf['links'][link]['cks'].values()
-            cks_list=[f"{x} varchar({maxvarchar})" for x in cks]
-            cks_def_list_str=",\n\t".join(cks_list)
-            cks_val_list_str=",\n\t".join(cks)
+
+            cks_def_list_str = '--- NONE ---'
+            cks_val_list_str = '--- NONE ---'
+                        
+            if 'cks' in conf['links'][link]:
+                cks=conf['links'][link]['cks'].values()
+
+                if len(cks)>0:
+                    cks_list=[f"{x} varchar({maxvarchar})" for x in cks]
+                    cks_def_list_str=",\n\t".join(cks_list)
+                    cks_val_list_str=",\n\t".join(cks)
             
             
             #######################

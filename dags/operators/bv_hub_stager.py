@@ -6,7 +6,7 @@ from airflow.providers.postgres.operators.postgres import PostgresOperator
 from airflow.models import Variable
 from collections import defaultdict
 
-class Hub_Stager(BaseOperator):  
+class BV_Hub_Stager(BaseOperator):  
     """ TEST DOC FOR HUB LOADER   """    
     #@apply_defaults
     def __init__(self,
@@ -42,25 +42,18 @@ class Hub_Stager(BaseOperator):
         appts=self.appts
         task_id=self.task_id
         
-        for src in conf['hubs'][hub]['src'].keys():            
-            sql=f"""SELECT column_name, data_type 
-                   FROM information_schema.columns
-                   WHERE table_schema = \'{schema_source}\'
-                   AND table_name   = \'{src}\';"""
-            
-            records=self.hook.get_records(sql)
-            src_cols[src]=[i[0] for i in records]
+        for src in conf['hubs'][hub]['src'].keys():                                    
             src_hub[hub].append(src)                        
                     
         #print(src_cols)  # verursacht eine info-msg mit loggin_mixin.py als quelle
         #self.log.info(f"{src_cols}")   # info-msg mit hub_stager.py als quelle
         
-        #conf=conf['rv'] # wird bereits in dag gemacht
+        #conf=conf['bv'] # wird bereits in dag gemacht
         
         for hub,tables in src_hub.items():            
             hk=conf['hubs'][hub]['hk']
             for table_name in tables:        
-                records=src_cols[table_name]
+                
                 bk_tgt=conf['hubs'][hub]['bk']                
                 bks_src=conf['hubs'][hub]['src'][table_name]['bks']    
                 
@@ -108,15 +101,21 @@ class Hub_Stager(BaseOperator):
                 hk_str = f"concat_ws('|','{tenant}','{bkeycode}',{bk_trans_str})"
                 hk_str = f'md5({hk_str})'
                 
+                ######################################################################
+                # ACHTUNG: sql-statement MUSS alle definierten bkey-felder auch wirklich enthalten
+                #          also anders als bei rv-hubs, wo manche quellen evtl. den bk gar nicht haben
+                #          -> zero-key treatment
+                ####################################################################
+                        
                 # folgende loop behandelt Zero-Keys
-                records2=[]        
-                for x in records:            
-                    if x in bks_src:
-                        #if not bk_str in records2:
-                            #records2.append(bk_str)                
-                        records2.append(f'trim(coalesce({x}::varchar({maxvarchar}),\'-1\'))') # -1=zero key
-                    else:
-                        records2.append(f'trim({x}::varchar({maxvarchar}))')                        
+                #records2=[]        
+                #for x in records:            
+                #    if x in bks_src:
+                #        #if not bk_str in records2:
+                #            #records2.append(bk_str)                
+                #        records2.append(f'trim(coalesce({x}::varchar({maxvarchar}),\'-1\'))') # -1=zero key
+                #    else:
+                #        records2.append(f'trim({x}::varchar({maxvarchar}))')                        
 
                 #original_fields = ',\n\t'.join(records2)
                 if not appts:
@@ -124,6 +123,7 @@ class Hub_Stager(BaseOperator):
                 else:
                     appts=appts+'::timestamp'                
                         
+                custom_sql=conf['hubs'][hub]['src'][table_name]['sql']
                 
                 sql=f"""INSERT INTO {schema_stage}.{table_name}__{hub} SELECT
                 --bk--
@@ -137,7 +137,7 @@ class Hub_Stager(BaseOperator):
                 \'{tenant}\',
                 \'{bkeycode}\',
                 \'{task_id}\'
-                FROM {schema_source}.{table_name}
+                FROM ({custom_sql}) as custom_sql
                 ;        
                 """
                                                 

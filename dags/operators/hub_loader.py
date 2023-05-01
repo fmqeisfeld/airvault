@@ -31,17 +31,17 @@ class Hub_Loader(BaseOperator):
         src_hub=defaultdict(list,{})           
         self.hook = PostgresHook(postgres_conn_id='pgconn')     
         
-        for src in conf['rv']['hubs'][hub]['src'].keys():
-            sql=f"""SELECT column_name, data_type 
-                    FROM information_schema.columns
-                    WHERE table_schema = \'{schema_source}\'
-                    AND table_name   = \'{src}\';"""
+        for src in conf['hubs'][hub]['src'].keys():
+            #sql=f"""SELECT column_name, data_type 
+            #        FROM information_schema.columns
+            #        WHERE table_schema = \'{schema_source}\'
+            #        AND table_name   = \'{src}\';"""
             
-            records=self.hook.get_records(sql)
-            src_cols[src]=[i[0] for i in records]
+            #records=self.hook.get_records(sql)
+            #src_cols[src]=[i[0] for i in records]
             src_hub[hub].append(src)  
             
-        conf=conf['rv']
+        #conf=conf['rv'] # wird bereits in dag gemacht
         
         for hub,tables in src_hub.items():            
             hk=conf['hubs'][hub]['hk']

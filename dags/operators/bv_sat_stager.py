@@ -6,7 +6,7 @@ from airflow.providers.postgres.operators.postgres import PostgresOperator
 from airflow.models import Variable
 from collections import defaultdict
 
-class Sat_Stager(BaseOperator):  
+class BV_Sat_Stager(BaseOperator):  
     """ TEST DOC   """    
     #@apply_defaults
     def __init__(self,
@@ -43,22 +43,12 @@ class Sat_Stager(BaseOperator):
         appts=self.appts
         task_id=self.task_id
         
-        # conf=conf['rv'] # wird bereits in dag gemacht
+        # conf=conf['bv'] # wird bereits in dag gemacht
            
         for sat,sat_obj in conf['sats'].items():
-            for src in sat_obj['src'].keys():
-                
-                sql=f"""SELECT column_name, data_type 
-                    FROM information_schema.columns
-                    WHERE table_schema = \'{schema_source}\'
-                    AND table_name   = \'{src}\';"""
-
-                records=self.hook.get_records(sql)
-                
-                src_sat_cols[src]=[i[0] for i in records]
+            for src in sat_obj['src'].keys():                
                 src_sat[sat].append(src)                  
-        
-        
+                
         
         for sat,tables in src_sat.items():            
             hk=conf['sats'][sat]['hk']
@@ -137,8 +127,13 @@ class Sat_Stager(BaseOperator):
                                                 
                 
                 #cks   
+                ######################################################################
+                # ACHTUNG: sql-statement MUSS alle definierten ckey-felder auch wirklich enthalten
+                #          also anders als bei rv-links, wo manche quellen evtl. den ck gar nicht haben
+                #          -> zero-key treatment
+                ####################################################################                  
                 if conf['sats'][sat]['cks']:
-                    cks_val_list=[f"coalesce(trim({x}::varchar({maxvarchar})),\'-1\')" if x in src_sat_cols[table_name] else "\'-1\'" for x in cks_mapping.keys()]        
+                    cks_val_list=[f"coalesce(trim({x}::varchar({maxvarchar})),\'-1\')" for x in cks_mapping.keys()]        
                     cks_val_list_str=",\n\t".join(cks_val_list)
                 else:
                     cks_val_list_str="--NONE--"
@@ -148,6 +143,7 @@ class Sat_Stager(BaseOperator):
                 else:
                     appts=appts+'::timestamp'                
                         
+                custom_sql=conf['sats'][sat]['src'][table_name]['sql']
                 
                 sql=f"""INSERT INTO {schema_stage}.{table_name}__{sat} SELECT
                 --hk--
@@ -164,7 +160,7 @@ class Sat_Stager(BaseOperator):
                 '{tenant}',
                 '{bkeycode}',
                 '{task_id}'
-                FROM {schema_source}.{table_name}
+                FROM ({custom_sql}) as custom_sql
                 ;        
                 """
                 

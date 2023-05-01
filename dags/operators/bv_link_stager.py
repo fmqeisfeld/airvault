@@ -6,7 +6,7 @@ from airflow.providers.postgres.operators.postgres import PostgresOperator
 from airflow.models import Variable
 from collections import defaultdict
 
-class Link_Stager(BaseOperator):  
+class BV_Link_Stager(BaseOperator):  
     """ TEST DOC   """    
     #@apply_defaults
     def __init__(self,
@@ -43,16 +43,7 @@ class Link_Stager(BaseOperator):
         appts=self.appts
         task_id=self.task_id
         
-        for src in conf['links'][lnk]['src'].keys(): 
-            
-            sql=f"""SELECT column_name, data_type 
-                   FROM information_schema.columns
-                   WHERE table_schema = \'{schema_source}\'
-                   AND table_name   = \'{src}\';"""
-
-            records=self.hook.get_records(sql)
-            
-            src_lnk_cols[src]=[i[0] for i in records]
+        for src in conf['links'][lnk]['src'].keys():             
             src_lnk[lnk].append(src)                    
         
         # conf=conf['rv'] # wird bereits in dag gemacht
@@ -122,10 +113,14 @@ class Link_Stager(BaseOperator):
                     
                 hk_val_list=[] # total concatted value for link pk
                 hks_val_list=[] # individual concatted vals for hubs pks
-                for key in hks:                    
+                for key in hks:   
+                    ###############################################                 
+                    # ACHTUNG: zero-key treatment geht hier nicht
+                    #          Man muss dafür sorgen, dass das custom-sql auch wirklich alle nötigen felder liefert!
+                    ###############################################
                     # zero-key treatment for non-existent bk
-                    if not bks_mapping_inv[key][0] in src_lnk_cols[table_name]:
-                        bks_mapping_inv[key]=["\'-1\'"]                    
+                    #if not bks_mapping_inv[key][0] in src_lnk_cols[table_name]:
+                    #    bks_mapping_inv[key]=["\'-1\'"]                    
                         
                     bks_list = [f"coalesce(trim({x}::varchar({maxvarchar})),\'-1\')" for x in bks_mapping_inv[key]]
                     bks_list_joined = ",".join(bks_list)
@@ -140,12 +135,17 @@ class Link_Stager(BaseOperator):
                 # hk        
                 hk_val_list_str=",".join(hk_val_list)
                 hk_val_list_str=f"md5(concat_ws('|','{tenant}','{bkeycode}',{hk_val_list_str}))"        
-                                
+
+                ######################################################################
+                # ACHTUNG: sql-statement MUSS alle definierten ckey-felder auch wirklich enthalten
+                #          also anders als bei rv-links, wo manche quellen evtl. den ck gar nicht haben
+                #          -> zero-key treatment
+                ####################################################################                                  
                 #cks 
                 cks_val_str='--NONE--'
                 if 'cks' in conf['links'][link]:                
-                    records=src_lnk_cols[table_name]
-                    cks_val=[f"coalesce(trim({x}::varchar({maxvarchar})),'-1')" if x in records else "'-1'" for x in cks.keys()]
+                    #records=src_lnk_cols[table_name]
+                    cks_val=[f"coalesce(trim({x}::varchar({maxvarchar})),'-1')" for x in cks.keys()]
                     cks_val_str=",\n\t".join(cks_val)
 
                 if not appts:
@@ -153,6 +153,7 @@ class Link_Stager(BaseOperator):
                 else:
                     appts=appts+'::timestamp'                
                                 
+                custom_sql=conf['links'][link]['src'][table_name]['sql']
                 
                 sql=f"""INSERT INTO {schema_stage}.{table_name}__{link} SELECT 
                 --hk--
@@ -168,7 +169,7 @@ class Link_Stager(BaseOperator):
                 '{tenant}',
                 '{bkeycode}',
                 '{task_id}'
-                FROM {schema_source}.{table_name}
+                FROM ({custom_sql}) as custom_sql
                 ;        
                 """
                                                 

@@ -1,3 +1,5 @@
+from decimal import Context
+from multiprocessing import context
 from pathlib import Path
 from urllib.parse import scheme_chars
 import pendulum
@@ -24,6 +26,10 @@ from operators.sat_stager import Sat_Stager
 from operators.hub_loader import Hub_Loader 
 from operators.link_loader import Link_Loader
 from operators.sat_loader import Sat_Loader
+
+from operators.bv_hub_stager import BV_Hub_Stager
+from operators.bv_sat_stager import BV_Sat_Stager
+from operators.bv_link_stager import BV_Link_Stager
 
 from collections import defaultdict
 
@@ -114,7 +120,8 @@ def mydag():
     config = yaml.safe_load(config_file)        
     config = defaultify(config)
             
-
+    task_list={}
+    
     # warning: don't do the following. Dag get's stuck - Tasks won't start
     #Variable.set('SCHEMA_STAGE',SCHEMA_STAGE)
     #Variable.set('SCHEMA_EDWH',SCHEMA_EDWH)
@@ -123,28 +130,28 @@ def mydag():
 
 
     # ***********************
-    #       STAGING
+    #       STAGING RV
     # ***********************
     with TaskGroup(group_id='STAGING') as staging_group:
         with TaskGroup(group_id='stg_hubs') as stg_hub_group:    
             for i,hub in enumerate(config['rv']['hubs']):
                 stage_hub = Hub_Stager(task_id=f"stage_{hub}", 
-                                        conf=config,
-                                        hub=hub)
+                                        conf=config['rv'],
+                                        hub=hub)                                
                 
         with TaskGroup(group_id='stg_links') as stg_lnk_group:    
             for i,lnk in enumerate(config['rv']['links']):
                 stage_lnk = Link_Stager(task_id=f"stage_{lnk}", 
-                                        conf=config,
+                                        conf=config['rv'],
                                         lnk=lnk)       
                 
         with TaskGroup(group_id='stg_sats') as stg_sat_group:    
             for i,sat in enumerate(config['rv']['sats']):
                 stage_sat = Sat_Stager(task_id=f"stage_{sat}", 
-                                        conf=config,
+                                        conf=config['rv'],
                                         sat=sat)                           
     # ***********************
-    #       RAW VAULT
+    #       LOAD RAW VAULT
     # ***********************
     with TaskGroup(group_id='LOAD_RAW_VAULT') as rv_group:
         # ***********************
@@ -153,36 +160,131 @@ def mydag():
         with TaskGroup(group_id='load_hubs') as load_hubs:
             for i,hub in enumerate(config['rv']['hubs']):                                
                 load_hub = Hub_Loader(task_id=f"load_{hub}", 
-                                    conf=config,
-                                    hub=hub)                            
+                                    conf=config['rv'],
+                                    hub=hub)  
+                  
+                task_list[f'load__{hub}']=load_hub                        
                     
         # ***********************
         #       RV LINKS
         # ***********************
         with TaskGroup(group_id='load_links') as load_links:
             for i,lnk in enumerate(config['rv']['links']):                                
-                load_link = Link_Loader(task_id=f"load_{lnk}", conf=config,lnk=lnk)
+                load_link = Link_Loader(task_id=f"load_{lnk}", conf=config['rv'],lnk=lnk)
+                task_list[f'load__{lnk}']=load_link
                 
         # ***********************
         #       RV SATS
         # ***********************
         with TaskGroup(group_id='load_sats') as load_sats:
             for i,sat in enumerate(config['rv']['sats']):                                
-                load_sat = Sat_Loader(task_id=f"load_{sat}", conf=config,sat=sat)                
+                load_sat = Sat_Loader(task_id=f"load_{sat}", conf=config['rv'],sat=sat)
+                task_list[f'load__{sat}']=load_sat
+                
+    # ***********************
+    #       BV-STAGING
+    # ***********************
+    dependency_map={}
+    with TaskGroup(group_id='BV_STAGING') as bv_staging_group:
+        with TaskGroup(group_id='bv_stg_hubs') as bv_stg_hub_group:    
+            for i,hub in enumerate(config['bv']['hubs']):
+                bv_stage_hub = BV_Hub_Stager(task_id=f"stage_{hub}", 
+                                        conf=config['bv'],
+                                        hub=hub)
+                #bv_stage_hub.set_upstream()
+                if config['bv']['hubs'][hub]['dependencies']:
+                    dependency_map[bv_stage_hub]=[x for x in config['bv']['hubs'][hub]['dependencies']]
+                    
+                task_list[f'stage__{hub}']=bv_stage_hub
         
-    # read_config >> connect(conf=config['connection']) >> get_tables(conns=config['connection']) >> [hub_group,link_group]
+        with TaskGroup(group_id='bv_stg_links') as bv_stg_lnk_group:    
+            for i,lnk in enumerate(config['bv']['links']):
+                bv_stage_lnk = BV_Link_Stager(task_id=f"stage_{lnk}", 
+                                        conf=config['bv'],
+                                        lnk=lnk)   
+                if config['bv']['links'][lnk]['dependencies']:
+                    dependency_map[bv_stage_lnk]=[x for x in config['bv']['links'][lnk]['dependencies']]
+                    
+                task_list[f'stage__{lnk}']=bv_stage_lnk
+                
+        with TaskGroup(group_id='bv_stg_sats') as bv_stg_sat_group:    
+            for i,sat in enumerate(config['bv']['sats']):
+                bv_stage_sat = BV_Sat_Stager(task_id=f"stage_{sat}", 
+                                        conf=config['bv'],
+                                        sat=sat)                 
+                if config['bv']['sats'][sat]['dependencies']:
+                    dependency_map[bv_stage_sat]=[x for x in config['bv']['sats'][sat]['dependencies']]
+                    
+                task_list[f'stage__{sat}']=bv_stage_sat
+                    
+    # ***********************
+    #       BV-LOADING
+    # ***********************
+    with TaskGroup(group_id='LOAD_BUSINESS_VAULT') as bv_group:
+        # ***********************
+        #       BV HUBS
+        # ***********************
+        with TaskGroup(group_id='bv_load_hubs') as bv_load_hubs:
+            for i,hub in enumerate(config['bv']['hubs']):                                
+                load_hub = Hub_Loader(task_id=f"load_{hub}", 
+                                    conf=config['bv'],
+                                    hub=hub)  
+                  
+                task_list[f'load__{hub}']=load_hub
+                dependency_map[load_hub]=[f'stage__{hub}']
+                
+        # ***********************
+        #       BV LINKS
+        # ***********************
+        with TaskGroup(group_id='bv_load_links') as bv_load_links:
+            for i,lnk in enumerate(config['bv']['links']):                                
+                load_link = Link_Loader(task_id=f"load_{lnk}", conf=config['bv'],lnk=lnk)
+                
+                task_list[f'load__{lnk}']=load_link  
+                dependency_map[load_link]=[f'stage__{lnk}']
+                
+        # ***********************
+        #       BV SATS
+        # ***********************
+        with TaskGroup(group_id='bv_load_sats') as bv_load_sats:
+            for i,sat in enumerate(config['bv']['sats']):                                
+                load_sat = Sat_Loader(task_id=f"load_{sat}", conf=config['bv'],sat=sat)
+                task_list[f'load__{sat}']=load_sat     
+                dependency_map[load_sat]=[f'stage__{sat}']
+                                       
+                
+    read_config >> set_vars(conf=config) >> connect(conf=config['connection']) >> \
+                   get_tables(conns=config['connection']) >> staging_group >> rv_group >> \
+                   bv_staging_group # >> bv_group # das letzte geht nicht sonst zykl. dependency
 
-    #read_config >> set_vars(SCHEMA_STAGE=SCHEMA_STAGE,SCHEMA_EDWH=SCHEMA_EDWH) 
-    #>> connect(conf=config['connection']) >> get_tables(conns=config['connection']) >> [hub_group]
-
-    # debug                                
-    #hub = 'hub_tax_bundle'
-    #create_hub = Hub_Creator(task_id=f"create_hub", conf=config,hub=hub)
+    # add dependencies to bv-tasks
+    print("\ndependency map:\n")
+    for key,val in dependency_map.items():
+        print(key,val)
+    print("\n")
+    print("\ntask list:\n")
+    for i in task_list:
+        print(i)
     
-    #read_config >> set_vars(conf=config) >> connect(conf=config['connection']) >> get_tables(conns=config['connection']) >> rv_group #[hub_group,link_group]
-    
-    read_config >> set_vars(conf=config) >> connect(conf=config['connection']) >> get_tables(conns=config['connection']) >> staging_group >> rv_group
-
+    task_keys = task_list.keys()
+    if dependency_map:
+        for key,val in dependency_map.items():
+            # map the vals to handles within task_list        
+            matching_items=[]
+            for search_string in val:
+                # achtung: hier gibts noch kein error-handling, falls search_string mal nicht gefunden wird
+                matching_list = list(filter(lambda x: search_string in x,task_keys))
+                if matching_list:
+                    matching_items.append(matching_list[0])
+            
+            if matching_items:
+                matching_handles = []
+                for item in matching_items:
+                    matching_handles.append(task_list[item])
+                
+                print("\nMatching handles:")
+                print(matching_handles)
+                key.set_upstream(matching_handles)
 
 
 globals()[DAG_ID] = mydag()

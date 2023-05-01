@@ -12,81 +12,214 @@ connection:
 
 rv:   # raw vault
   hubs:
-    hub_tax_bundle:         # name der hub-tabelle
-      hk: hk_tax_bundle     # benamung des hashkeys in zieltabelle
-      bk: tax_bundle_id     # benamung des bks in der zieltabelle. Quasi die Klartext-version vom PK
+    h_customer:         # name der hub-tabelle
+      hk: hk_customer     # benamung des hashkeys in zieltabelle
+      bk: customer_id     # benamung des bks in der zieltabelle. Quasi die Klartext-version vom PK (es kann mehrere quellen geben)
       overwrite: False      # drop & recreate ? (tbd)
 
       src:                  # hub kann mehrere quellen haben                 
-        v_report_taxation:  # erste quelle
+        customer:           # erste quelle
           bkeycode: default # collision-code optional, defaults to 'default'
           tenant: default   # tenant-id, defaults to 'default'                  
           bks:              # namen der/des bk-felds in quelle          
-            - tax_bundle_id # Bei Angabe mehrerer Quellfelder
-            - dossier_uuid  # resultiert  ein Composite-Key, d.h. alle fliessen in selben Hash ein
+            - customer_id   # Bei Angabe mehrerer Quellfelder          
 
-        v_report_ziffer:    # 2te quelle
-          bks: 
-            - tax_bundle_id # name des bk-felds in quelle     
-          
-
-    hub_ziffer:
-      hk: hk_ziffer
-      bk: ziffer
+    h_staff:
+      hk: hk_staff
+      bk: staff_id
       overwrite: False
 
       src:
-        v_report_dict_ziffer:
+        staff:
           bks: 
-            - ziffer
-    
+            - staff_id
+
+    h_inventory:
+      hk: hk_inventory
+      bk: inventory_id
+      overwrite: False
+
+      src:
+        inventory:
+          bks:
+          - inventory_id
+
+    h_film:
+      hk: hk_film
+      bk: film_id
+      overwrite: False
+
+      src:
+        film:
+          bks:
+            - film_id
+
+    h_actor:
+      hk: hk_actor
+      bk: actor_id
+      overwrite: False
+
+      src:
+        actor:
+          bks:
+            - actor_id
   links:
-    lnk_taxbundle_ziffer:           # name der link-tabelle
-      hk: hk_l_taxbundle_ziffer     # name von pk der link-tabelle
+    l_rental:           # name der link-tabelle
+      hk: hk_rental     # name von pk der link-tabelle
       hks:                          # namen der hks der hubs
-        - hk_ziffer
-        - hk_tax_bundle
+        - hk_inventory
+        - hk_staff
+        - hk_customer
       overwrite: False
 
       cks:
-        dossier_uuid: dossier       # child keys (geht nicht in hash rein, hat keine gehashte version und hat auch keinen zugeh. hub)
+        rental_id: rental_id       # child keys (geht nicht in hash rein, hat keine gehashte version und hat auch keinen zugeh. hub)
                                     # kann auch benutzt werden, wenn man nur aus gründen der wiederherstellbarkeit der quelle, ein attr. mitschelleppen will
                                     # "don't split unit of work"
                                     # falls eine der quellen nicht über dieses Feld verfügt, wird hierfür zerokey (=-1) eingesetzt
 
       src:                          # link kann mehrere quellen haben
-        v_report_ziffer:            # erste quelle
+        rental:                     # erste quelle
           bkeycode: default         # optionaler collision code (geht ein in hash, defaults to 'default')
           tenant: default           # optional für multi-tenancy (geht in hash rein, defaults to 'default')
           bks:                      # link verknüpft mehrere hubs -> mindestens 2 bks pro quelle nötig. Reihenfolge wichtig für hashing
-            ziffer: hk_ziffer       # bk aus quelle (des zugeh. hubs) und name des gehashten keys in link-tabelle
-            tax_bundle_id: hk_tax_bundle 
-            snapshot_version: hk_tax_bundle # beispiel für composite-key: verschiedene quell-felder mappen zum selben hk
+            inventory_id: hk_inventory       # bk aus quelle (des zugeh. hubs) und name des gehashten keys in link-tabelle
+            staff_id: hk_staff
+            customer_id: hk_customer # beispiel für composite-key: verschiedene quell-felder mappen zum selben hk
 
-        v_report_taxation:       # 2te quelle     
-          bks:                   
-            ziffer: hk_ziffer    # quelle enthält keinen bk "ziffer". Hier wird automatisch zero-key ("-1") verwendet
-            tax_bundle_id: hk_tax_bundle 
+    l_film_actor:
+      hk: hk_film_actor
+      hks:
+        - hk_film
+        - hk_actor
+      src:
+        film_actor:
+          bks:
+            film_id: hk_film
+            actor_id: hk_actor
 
   sats:
-    sat_taxbundle:
-        hk: hk_tax_bundle
-        #cks:
-        #  dossier_uuid: dossier
-        #multiactive: true     # defaults to 'false' 
-        attrs:                # benamung der attribute in der ziel-tabelle
-          - taxation_type
-          - status
-          - gemeinde_bfs
-        src:
-          v_report_taxation:
-            bks:
-              - tax_bundle_id
-              - snapshot_version
-            attrs:            # mapping der attributnamen quelltabelle -> zieltabelle
-              taxation_type: taxation_type
-              status: status
-              gemeinde_bfs: gemeinde_bfs
+    s_rental:
+      hk: hk_rental
+      cks:
+        inventory_id: inventory_id
+      #multiactive: true     # defaults to 'false' 
+      attrs:                 # benamung der attribute in der ziel-tabelle
+        - rental_date
+      src:
+        rental:
+          bks:
+            - inventory_id
+            - staff_id
+            - customer_id
+          attrs:            # mapping der attributnamen quelltabelle -> zieltabelle
+            rental_date: rental_date
 
+    s_film:
+      hk: hk_film
+      attrs:
+        - title
+        - release_year
+      src:
+        film:
+          bks:
+            - film_id
+          attrs:
+            title: title
+            release_year: release_year
+
+    s_actor:
+      hk: hk_actor
+      attrs:
+        - first_name
+        - last_name
+      src:
+        actor:
+          bks:
+            - actor_id
+          attrs:
+            first_name: first_name
+            last_name: last_name
+
+bv:
+  hubs:
+    bv_h_customer:         # name der hub-tabelle
+      hk: hk_customer     # benamung des hashkeys in zieltabelle
+      bk: customer_id     # benamung des bks in der zieltabelle. Quasi die Klartext-version vom PK (es kann mehrere quellen geben)
+      overwrite: False      # drop & recreate ? (tbd)
+
+      src:                  # hub kann mehrere quellen haben                 
+        customer_sql:         # erste "quelle": das ist keine echte table, sondern wird nur für rec_src-feld benutzt
+          bkeycode: default # collision-code optional, defaults to 'default'
+          tenant: default   # tenant-id, defaults to 'default'                  
+          bks:              # namen der/des bk-felds in quelle          
+            - customer_id   # Bei Angabe mehrerer Quellfelder
+
+          sql: "SELECT * FROM quelle.customer"
+    
+  links:
+    bv_l_rental: 
+      hk: hk_rental
+      hks:                          
+        - hk_inventory
+        - hk_staff
+        - hk_customer
+      overwrite: False
+
+      cks:
+        rental_id: rental_id    
+      
+      src:                          
+        rental_sql:
+          bkeycode: default         
+          tenant: default           
+          bks:                      
+            inventory_id: hk_inventory
+            staff_id: hk_staff
+            customer_id: hk_customer
+
+          sql: "SELECT * FROM quelle.rental"
+
+  sats:
+    bv_es_rental:
+      effectivity: l_rental
+      hk: hk_rental # muss genauso heissen wie beim parent link
+      hks:
+        - hk_inventory
+        - hk_staff
+        - hk_customer
+      
+      src:
+        mysql:
+          bkeycode: default
+          tenant: default
+          bks: 
+            inventory_id: hk_inventory
+            staff_id: hk_staff
+            customer_id: hk_customer
+          dks:                       # driver-key(s)
+            - inventory_id
+            - staff_id 
+          sql: "SELECT * FROM quelle.rental"
+
+    bv_s_rental:
+      hk: hk_rental
+      cks:
+        inventory_id: inventory_id
+      #multiactive: true     # defaults to 'false' 
+      attrs:                 # benamung der attribute in der ziel-tabelle
+        - rental_date
+      src:
+        foo_sql:
+          bks:
+            - inventory_id
+            - staff_id
+            - customer_id
+          attrs:            # mapping der attributnamen quelltabelle -> zieltabelle
+            rental_date: rental_date          
+          sql: "SElECT * FROM quelle.rental"
+
+      dependencies:  
+        - load__bv_h_customer
 
     
