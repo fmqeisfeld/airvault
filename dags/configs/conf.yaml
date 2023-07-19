@@ -12,9 +12,9 @@ connection:
 
 rv:   # raw vault
   hubs:
-    h_customer:         # name der hub-tabelle
-      hk: hk_customer     # benamung des hashkeys in zieltabelle
-      bk: customer_id     # benamung des bks in der zieltabelle. Quasi die Klartext-version vom PK (es kann mehrere quellen geben)
+    h_customer:             # name der hub-tabelle
+      hk: hk_customer       # benamung des hashkeys in zieltabelle
+      bk: customer_id_tgt   # benamung des bks in der zieltabelle. Quasi die Klartext-version vom PK (es kann mehrere quellen geben)
       overwrite: False      # drop & recreate ? (tbd)
 
       src:                  # hub kann mehrere quellen haben                 
@@ -26,7 +26,7 @@ rv:   # raw vault
 
     h_staff:
       hk: hk_staff
-      bk: staff_id
+      bk: staff_id_tgt
       overwrite: False
 
       src:
@@ -36,7 +36,7 @@ rv:   # raw vault
 
     h_inventory:
       hk: hk_inventory
-      bk: inventory_id
+      bk: inventory_id_tgt
       overwrite: False
 
       src:
@@ -46,7 +46,7 @@ rv:   # raw vault
 
     h_film:
       hk: hk_film
-      bk: film_id
+      bk: film_id_tgt
       overwrite: False
 
       src:
@@ -56,7 +56,7 @@ rv:   # raw vault
 
     h_actor:
       hk: hk_actor
-      bk: actor_id
+      bk: actor_id_tgt
       overwrite: False
 
       src:
@@ -73,7 +73,7 @@ rv:   # raw vault
       overwrite: False
 
       cks:
-        rental_id: rental_id       # child keys (geht nicht in hash rein, hat keine gehashte version und hat auch keinen zugeh. hub)
+        rental_id: rental_id_tgt    # child keys (geht nicht in hash rein, hat keine gehashte version und hat auch keinen zugeh. hub)
                                     # kann auch benutzt werden, wenn man nur aus gründen der wiederherstellbarkeit der quelle, ein attr. mitschelleppen will
                                     # "don't split unit of work"
                                     # falls eine der quellen nicht über dieses Feld verfügt, wird hierfür zerokey (=-1) eingesetzt
@@ -102,10 +102,10 @@ rv:   # raw vault
     s_rental:
       hk: hk_rental
       cks:
-        inventory_id: inventory_id
+        inventory_id: inventory_id_tgt
       #multiactive: true     # defaults to 'false' 
       attrs:                 # benamung der attribute in der ziel-tabelle
-        - rental_date
+        - rental_date_tgt
       src:
         rental:
           bks:
@@ -113,39 +113,40 @@ rv:   # raw vault
             - staff_id
             - customer_id
           attrs:            # mapping der attributnamen quelltabelle -> zieltabelle
-            rental_date: rental_date
+            rental_date: rental_date_tgt
 
     s_film:
       hk: hk_film
       attrs:
-        - title
-        - release_year
+        - title_tgt
+        - release_year_tgt
+      multiactive: true
       src:
         film:
           bks:
             - film_id
           attrs:
-            title: title
-            release_year: release_year
+            title: title_tgt
+            release_year: release_year_tgt
 
     s_actor:
       hk: hk_actor
       attrs:
-        - first_name
-        - last_name
+        - first_name_tgt
+        - last_name_tgt
       src:
         actor:
           bks:
             - actor_id
           attrs:
-            first_name: first_name
-            last_name: last_name
+            first_name: first_name_tgt
+            last_name: last_name_tgt
 
 bv:
   hubs:
-    bv_h_customer:         # name der hub-tabelle
-      hk: hk_customer     # benamung des hashkeys in zieltabelle
-      bk: customer_id     # benamung des bks in der zieltabelle. Quasi die Klartext-version vom PK (es kann mehrere quellen geben)
+    bv_h_customer:          # name der hub-tabelle
+      hk: hk_customer       # benamung des hashkeys in zieltabelle
+      bk: customer_id_tgt   # benamung des bks in der zieltabelle. Quasi die Klartext-version vom PK (es kann mehrere quellen geben)
       overwrite: False      # drop & recreate ? (tbd)
 
       src:                  # hub kann mehrere quellen haben                 
@@ -167,7 +168,7 @@ bv:
       overwrite: False
 
       cks:
-        rental_id: rental_id    
+        rental_id: rental_id_tgt
       
       src:                          
         rental_sql:
@@ -181,34 +182,13 @@ bv:
           sql: "SELECT * FROM quelle.rental"
 
   sats:
-    bv_es_rental:
-      effectivity: l_rental
-      hk: hk_rental # muss genauso heissen wie beim parent link
-      hks:
-        - hk_inventory
-        - hk_staff
-        - hk_customer
-      
-      src:
-        mysql:
-          bkeycode: default
-          tenant: default
-          bks: 
-            inventory_id: hk_inventory
-            staff_id: hk_staff
-            customer_id: hk_customer
-          dks:                       # driver-key(s)
-            - inventory_id
-            - staff_id 
-          sql: "SELECT * FROM quelle.rental"
-
     bv_s_rental:
       hk: hk_rental
       cks:
-        inventory_id: inventory_id
+        inventory_id: inventory_id_tgt
       #multiactive: true     # defaults to 'false' 
       attrs:                 # benamung der attribute in der ziel-tabelle
-        - rental_date
+        - rental_date_tgt
       src:
         foo_sql:
           bks:

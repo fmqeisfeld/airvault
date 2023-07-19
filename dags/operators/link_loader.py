@@ -4,6 +4,7 @@ from airflow.utils.decorators import apply_defaults
 from airflow.providers.postgres.hooks.postgres import PostgresHook
 from airflow.models import Variable
 from collections import defaultdict
+from jinja2 import Template
 
 class Link_Loader(BaseOperator):  
     #@apply_defaults
@@ -15,17 +16,30 @@ class Link_Loader(BaseOperator):
                 
         super().__init__(*args, **kwargs)
                              
-        schema_edwh = Variable.get('SCHEMA_EDWH')                             
-        schema_stage = Variable.get('SCHEMA_STAGE')
-        schema_source = Variable.get('SCHEMA_SOURCE')
+        self.schema_edwh = Variable.get('SCHEMA_EDWH')                             
+        self.schema_stage = Variable.get('SCHEMA_STAGE')
+        self.schema_source = Variable.get('SCHEMA_SOURCE')
         
-        maxvarchar = Variable.get('MAXVARCHAR')        
-        appts = None #Variable.get('APPTS',default_var=None)  # applied dts. Global Var, set via Webinterface                        
-        task_id=self.task_id
-                
+        self.maxvarchar = Variable.get('MAXVARCHAR')        
+        self.appts = None #Variable.get('APPTS',default_var=None)  # applied dts. Global Var, set via Webinterface                                
+        self.lnk = lnk                        
+        self.conf = conf
+
+
+
+    def execute(self, context: Context):     
         src_lnk_cols=defaultdict(list,{})
         src_lnk=defaultdict(list,{})           
-        self.hook = PostgresHook(postgres_conn_id='pgconn')  
+                
+        conf = self.conf
+        lnk = self.lnk 
+        schema_source = self.schema_source
+        maxvarchar = self.maxvarchar
+        schema_edwh = self.schema_edwh
+        schema_stage = self.schema_stage
+        self.hook = PostgresHook(postgres_conn_id='pgconn')
+        
+        sql_concat=""
         
         for src in conf['links'][lnk]['src'].keys():             
             sql=f"""SELECT column_name, data_type 
@@ -43,81 +57,57 @@ class Link_Loader(BaseOperator):
         for link,tables in src_lnk.items():            
             hk=conf['links'][link]['hk']
             hks=conf['links'][link]['hks']
-                    
-            hks_list=[f"{x} varchar({maxvarchar}) NOT NULL" for x in hks]
-            hks_def_list_str=",\n\t".join(hks_list)    
-            hks_val_list_str=",\n\t".join(hks)    
 
-            cks_def_list_str = '--- NONE ---'
-            cks_val_list_str = '--- NONE ---'
-                        
+            cks=[]
             if 'cks' in conf['links'][link]:
                 cks=conf['links'][link]['cks'].values()
 
-                if len(cks)>0:
-                    cks_list=[f"{x} varchar({maxvarchar})" for x in cks]
-                    cks_def_list_str=",\n\t".join(cks_list)
-                    cks_val_list_str=",\n\t".join(cks)
-            
-            
+
             #######################
             #     CREATE SQL
-            #######################
-            sql=f"""CREATE TABLE IF NOT EXISTS  {schema_edwh}.{link} (
-            --hk--
-            {hk} varchar({maxvarchar}) NOT NULL,
-            --hks--
-            {hks_def_list_str},
-            --cks--
-            {cks_def_list_str},    
-            --meta--    
-            DV_LOADTS timestamp NULL,
-            DV_APPTS timestamp NULL,
-            DV_RECSRC varchar({maxvarchar}) NULL,
-            DV_TENANT varchar({maxvarchar}) NULL,
-            DV_BKEYCODE varchar({maxvarchar}) NULL,
-            DV_TASKID varchar({maxvarchar}) NULL        
-            );
-            """
+            #######################    
+            sql_template=open('/opt/airflow/dags/sql/link_loader_create.sql','r').read()
+            context = {
+                "schema_edwh":schema_edwh,
+                "link":link,
+                "maxvarchar":maxvarchar,    
+                "hk":hk,
+                "hks":hks,
+                "cks":cks        
+            }
+            template = Template(sql_template)
+            sql=template.render(**context)
+            sql_concat += f"\n{sql}"
+            #print(sql)
+            #continue
             
-            self.sql=sql
-        
-    
+            
             for table_name in tables:                                                                                        
                 ######################
                 #   INSERT SQL
-                #######################                                   
-                sql=f"""INSERT INTO {schema_edwh}.{link} SELECT
-                --hk--
-                {hk},
-                --hks--
-                {hks_val_list_str},        
-                --cks--
-                {cks_val_list_str},
-                --meta--
-                current_timestamp,
-                DV_APPTS,
-                DV_RECSRC,
-                DV_TENANT,
-                DV_BKEYCODE,        
-                '{task_id}'
-                FROM {schema_stage}.{table_name}__{link} src
-                WHERE NOT EXISTS (
-                    SELECT 1 
-                    FROM {schema_edwh}.{link} tgt
-                    WHERE src.{hk} = tgt.{hk}
-                )
-                ;        
-                """
-                self.sql += f"\n{sql}"
+                #######################                                                   
+                sql_template=open('/opt/airflow/dags/sql/link_loader_insert.sql','r').read()
+                context = {
+                "schema_edwh":schema_edwh,
+                "schema_stage":schema_stage,
+                "link":link,
+                "maxvarchar":maxvarchar,    
+                "hk":hk,
+                "hks":hks,
+                "cks":cks,
+                "table_name":table_name,
+                "task_id":self.task_id
+                }
+                
+                template = Template(sql_template)
+                sql=template.render(**context)
+
+                sql_concat += f"\n{sql}"
         
         
-        self.doc=self.sql
-
-
-    def execute(self, context: Context):        
-        self.hook = PostgresHook(postgres_conn_id='pgconn')                                      
-        self.hook.run(self.sql)
+        self.doc=sql_concat
+        
+        self.hook.run(sql_concat)
 
         
             

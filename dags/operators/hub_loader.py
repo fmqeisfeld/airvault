@@ -5,6 +5,7 @@ from airflow.providers.postgres.hooks.postgres import PostgresHook
 from airflow.providers.postgres.operators.postgres import PostgresOperator
 from airflow.models import Variable
 from collections import defaultdict
+from jinja2 import Template
 
 
 class Hub_Loader(BaseOperator):  
@@ -17,6 +18,7 @@ class Hub_Loader(BaseOperator):
                  **kwargs):
         
         self.doc_md = __doc__
+        self.sql=""
         super().__init__(*args, **kwargs)
                              
         schema_edwh = Variable.get('SCHEMA_EDWH')                             
@@ -32,13 +34,6 @@ class Hub_Loader(BaseOperator):
         self.hook = PostgresHook(postgres_conn_id='pgconn')     
         
         for src in conf['hubs'][hub]['src'].keys():
-            #sql=f"""SELECT column_name, data_type 
-            #        FROM information_schema.columns
-            #        WHERE table_schema = \'{schema_source}\'
-            #        AND table_name   = \'{src}\';"""
-            
-            #records=self.hook.get_records(sql)
-            #src_cols[src]=[i[0] for i in records]
             src_hub[hub].append(src)  
             
         #conf=conf['rv'] # wird bereits in dag gemacht
@@ -49,63 +44,49 @@ class Hub_Loader(BaseOperator):
             #######################
             #     CREATE SQL
             #######################
-            sql=f"""CREATE TABLE IF NOT EXISTS {schema_edwh}.{hub} (
-            --bk--
-            {bk_tgt} varchar({maxvarchar}) NOT NULL,
-            --hk--
-            {hk} varchar({maxvarchar}) NOT NULL,
-            --meta--    
-            DV_LOADTS timestamp NULL,
-            DV_APPTS timestamp NULL,
-            DV_RECSRC varchar({maxvarchar}) NULL,
-            DV_TENANT varchar({maxvarchar}) NULL,
-            DV_BKEYCODE varchar({maxvarchar}) NULL,
-            DV_TASKID varchar({maxvarchar}) NULL        
-            );
-            """
+
+            sql_template = open('/opt/airflow/dags/sql/hub_loader_create.sql','r').read()
+            context = {
+                "schema_edwh":schema_edwh,
+                "bk_tgt":bk_tgt,
+                "maxvarchar":maxvarchar,    
+                "hk":hk,
+                "hub":hub
+            }
+            template = Template(sql_template)
+            sql=template.render(**context)
+            self.sql += sql
+            #print(sql)
+            #continue
             
-            self.sql=sql
-                
             
             for table_name in tables:                                        
                 ######################
                 #   INSERT SQL
                 #######################                                   
-                sql=f"""INSERT INTO {schema_edwh}.{hub} SELECT        
-                --bk--
-                {bk_tgt},        
-                --hk--
-                {hk},
-                --meta--
-                current_timestamp,
-                DV_APPTS,
-                DV_RECSRC,
-                DV_TENANT,
-                DV_BKEYCODE,        
-                '{task_id}'
-                FROM {schema_stage}.{table_name}__{hub} src
-                WHERE NOT EXISTS (
-                SELECT 1 
-                FROM {schema_edwh}.{hub} tgt
-                WHERE src.{hk} = tgt.{hk}
-                )
-                ;        
-                """
+                sql_template = open('/opt/airflow/dags/sql/hub_loader_insert.sql','r').read()
+                
+                context = {
+                    "schema_edwh":schema_edwh,
+                    "schema_stage":schema_stage,            
+                    "bk_tgt":bk_tgt,
+                    "table_name":table_name,            
+                    "maxvarchar":maxvarchar,    
+                    "hk":hk,
+                    "hub":hub,
+                    "task_id":task_id
+                }
+            
+                template = Template(sql_template)
+                sql=template.render(**context)
                 self.sql += f"\n{sql}"
         
         self.doc = self.sql
                     
-    def execute(self, context: Context):        
-        
-        
-        
+    def execute(self, context: Context):                                
         self.hook = PostgresHook(postgres_conn_id='pgconn')                                      
         self.hook.run(self.sql)
         
-        #result=self.hook.get_records(self.sql)
-        
-        #context['ti'].xcom_push(key='records', value=result)        
-        #Variable.set('myvar',{'mykey':'myval'})
         
         
             

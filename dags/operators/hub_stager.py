@@ -5,6 +5,7 @@ from airflow.providers.postgres.hooks.postgres import PostgresHook
 from airflow.providers.postgres.operators.postgres import PostgresOperator
 from airflow.models import Variable
 from collections import defaultdict
+from jinja2 import Template
 
 class Hub_Stager(BaseOperator):  
     """ TEST DOC FOR HUB LOADER   """    
@@ -63,91 +64,65 @@ class Hub_Stager(BaseOperator):
                 records=src_cols[table_name]
                 bk_tgt=conf['hubs'][hub]['bk']                
                 bks_src=conf['hubs'][hub]['src'][table_name]['bks']    
-                
+
                 #######################
                 #     CREATE SQL
                 #######################
-                sql=\
-                f"""CREATE TABLE IF NOT EXISTS  {schema_stage}.{table_name}__{hub} (
-                --bk--
-                {bk_tgt} varchar({maxvarchar}) NOT NULL,
-                --hk--
-                {hk} varchar({maxvarchar}) NOT NULL,
-                --meta--        
-                DV_LOADTS timestamp NULL,
-                DV_APPTS timestamp NULL,
-                DV_RECSRC varchar({maxvarchar}) NULL,
-                DV_TENANT varchar({maxvarchar}) NULL,
-                DV_BKEYCODE varchar({maxvarchar}) NULL,
-                DV_TASKID varchar({maxvarchar}) NULL        
-                );
-                TRUNCATE {schema_stage}.{table_name}__{hub};
-                """
-                
-                sql_concat=sql
-                self.hook.run(sql) 
-                
-                
+                sql_template = open('/opt/airflow/dags/sql/hub_stager_create.sql','r').read()                        
+                context = {
+                    "schema_stage":schema_stage,
+                    "table_name":table_name,
+                    "bk_tgt":bk_tgt,
+                    "maxvarchar":maxvarchar,    
+                    "hk":hk,
+                    "hub":hub
+                }
+                template = Template(sql_template)
+                sql=template.render(**context)
+
+                sql_concat += f"\n{sql}"
+                #continue
+
                 ######################
                 #   INSERT SQL
                 #######################        
-                bk_trans = [f"trim(coalesce({x}::varchar({maxvarchar}),\'-1\'))" for x in bks_src] #-1= zero key
-                bk_trans_str=",".join(bk_trans)                        
-                
+                bk_trans = [f"trim(coalesce({x}::varchar({maxvarchar}),\'-1\'))" for x in bks_src] #-1= zero key                                   
+
                 tenant = conf['hubs'][hub]['src'][table_name]['tenant']
                 if not tenant:
                     tenant='default'
-                    
+
                 bkeycode = conf['hubs'][hub]['src'][table_name]['bkeycode']
                 if not bkeycode:
                     bkeycode='default'    
-                    
-                    
-                # multiple bkeys map to one?             
-                bk_str = f"concat_ws('|',{bk_trans_str})"  # only pure bk
-                hk_str = f"concat_ws('|','{tenant}','{bkeycode}',{bk_trans_str})"
-                hk_str = f'md5({hk_str})'
-                
-                # folgende loop behandelt Zero-Keys
-                records2=[]        
-                for x in records:            
-                    if x in bks_src:
-                        #if not bk_str in records2:
-                            #records2.append(bk_str)                
-                        records2.append(f'trim(coalesce({x}::varchar({maxvarchar}),\'-1\'))') # -1=zero key
-                    else:
-                        records2.append(f'trim({x}::varchar({maxvarchar}))')                        
-
-                #original_fields = ',\n\t'.join(records2)
-                if not appts:
-                    appts='current_timestamp'
-                else:
-                    appts=appts+'::timestamp'                
                         
+
+                if not appts:
+                    appts='current_timestamp'                       
                 
-                sql=f"""INSERT INTO {schema_stage}.{table_name}__{hub} SELECT
-                --bk--
-                {bk_str},
-                --hk--
-                {hk_str},
-                --meta--        
-                current_timestamp,
-                {appts},
-                \'{table_name}\',
-                \'{tenant}\',
-                \'{bkeycode}\',
-                \'{task_id}\'
-                FROM {schema_source}.{table_name}
-                ;        
-                """
-                                                
-                self.hook.run(sql) 
+                sql_template=open('/opt/airflow/dags/sql/hub_stager_insert.sql','r').read()
                 
-                sql_concat += '\n'+sql
-                self.doc = sql_concat
-        
+                context = {
+                    "schema_stage":schema_stage,
+                    "schema_source":schema_source,
+                    "table_name":table_name,
+                    "bks_src":bks_src,
+                    "maxvarchar":maxvarchar,    
+                    "hk":hk,
+                    "hub":hub,
+                    "appts":appts,
+                    "tenant":tenant,
+                    "bkeycode":bkeycode,
+                    "task_id":task_id
+                }
+                template = Template(sql_template)
+                sql=template.render(**context)
                 
-        #self.hook.run(self.sql)                
+                sql_concat += '\n'+sql       
+                                                                
+                
+        self.doc = sql_concat                        
+        self.hook.run(sql_concat)                
         #context['ti'].xcom_push(key='records', value=result)        
         #Variable.set('myvar',{'mykey':'myval'})
         

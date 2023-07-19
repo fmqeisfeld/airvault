@@ -5,6 +5,7 @@ from airflow.providers.postgres.hooks.postgres import PostgresHook
 from airflow.providers.postgres.operators.postgres import PostgresOperator
 from airflow.models import Variable
 from collections import defaultdict
+from jinja2 import Template
 
 class BV_Link_Stager(BaseOperator):  
     """ TEST DOC   """    
@@ -45,96 +46,74 @@ class BV_Link_Stager(BaseOperator):
         
         for src in conf['links'][lnk]['src'].keys():             
             src_lnk[lnk].append(src)                    
-        
-        # conf=conf['rv'] # wird bereits in dag gemacht
-        
+                
         for link,tables in src_lnk.items():                
-            
+
             hk=conf['links'][link]['hk']    # PK of link
             hks = conf['links'][link]['hks'] # PKs of hubs
-            hks_list = [f"{x} varchar({maxvarchar}) NOT NULL" for x in hks]
-            hks_list_str = ",\n\t".join(hks_list)
-            
+
             for table_name in tables:          
-                
                 bks= conf['links'][link]['src'][table_name]['bks']
-                bks_list = [f"{x} varchar({maxvarchar}) NOT NULL" for x in bks]
-                        
-                cks_str='--NONE--'
-                
+
+                cks = []
                 if 'cks' in conf['links'][link]:
-                    cks=conf['links'][link]['cks']        
-                    cks_list=[x for x in cks.values()]
-                
-                    if len(cks_list)>0:
-                        cks_str=f" varchar({maxvarchar}) NOT NULL,\n\t".join(cks_list) + f" varchar({maxvarchar}) NOT NULL,"    
-                
+                    cks=conf['links'][link]['cks'].values()                    
+
+
                 #######################
-                #     CREATE SQL
+                #     CREATE SQL (same as rv link stager create)
                 #######################
-                sql=f"""CREATE TABLE IF NOT EXISTS {schema_stage}.{table_name}__{lnk} (
-                --hk--
-                {hk} varchar({maxvarchar}) NOT NULL,
-                --hks--
-                {hks_list_str},
-                --cks--
-                {cks_str}        
-                --meta--
-                DV_LOADTS timestamp NULL,
-                DV_APPTS timestamp NULL,
-                DV_RECSRC varchar({maxvarchar}) NULL,
-                DV_TENANT varchar({maxvarchar}) NULL,
-                DV_BKEYCODE varchar({maxvarchar}) NULL,
-                DV_TASKID varchar({maxvarchar}) NULL
-                );
-                TRUNCATE {schema_stage}.{table_name}__{lnk};
-                """
+                sql_template=sql_template=open('/opt/airflow/dags/sql/link_stager_create.sql','r').read()
                 
-                sql_concat=sql
-                self.hook.run(sql) 
+                context = {
+                    "schema_stage":schema_stage,            
+                    "lnk":lnk,
+                    "maxvarchar":maxvarchar,    
+                    "hk":hk,
+                    "hks":hks,
+                    "cks":cks,
+                    "table_name":table_name,
+                    "link":link # is param given to link_loader in prod-code
+                }
+                template = Template(sql_template)
+                sql=template.render(**context)        
                 
+                sql_concat += f"\n{sql}"
+                #continue
+
                 ######################
                 #   INSERT SQL
                 #######################
                 tenant = conf['links'][link]['src'][table_name]['tenant']
                 if not tenant:
                     tenant='default'
-                    
+
                 bkeycode = conf['links'][link]['src'][table_name]['bkeycode']
                 if not bkeycode:
                     bkeycode='default'    
-                    
-                    
+
+
                 # hks & hk
                 bks_mapping = conf['links'][link]['src'][table_name]['bks']
                 bks_mapping_inv=defaultdict(list)
                 for i,j in bks_mapping.items():
                     bks_mapping_inv[j].append(i)
-                    
-                hk_val_list=[] # total concatted value for link pk
-                hks_val_list=[] # individual concatted vals for hubs pks
+
+                
+                bks_list=[]
                 for key in hks:   
                     ###############################################                 
                     # ACHTUNG: zero-key treatment geht hier nicht
                     #          Man muss dafür sorgen, dass das custom-sql auch wirklich alle nötigen felder liefert!
                     ###############################################
-                    # zero-key treatment for non-existent bk
-                    #if not bks_mapping_inv[key][0] in src_lnk_cols[table_name]:
-                    #    bks_mapping_inv[key]=["\'-1\'"]                    
-                        
-                    bks_list = [f"coalesce(trim({x}::varchar({maxvarchar})),\'-1\')" for x in bks_mapping_inv[key]]
-                    bks_list_joined = ",".join(bks_list)
-                    bks_list_str=f"concat_ws('|','{tenant}','{bkeycode}',{bks_list_joined})"
-                    bks_list_str=f"md5({bks_list_str})"
-                    hks_val_list.append(bks_list_str)
-                    
-                    hk_val_list.append(bks_list_joined)
+                    bks_list+=[x for x in bks_mapping_inv[key]]
+                
 
-                # hks
-                hks_val_list_str = ",\n\t".join(hks_val_list)
-                # hk        
-                hk_val_list_str=",".join(hk_val_list)
-                hk_val_list_str=f"md5(concat_ws('|','{tenant}','{bkeycode}',{hk_val_list_str}))"        
+                custom_sql=conf['links'][link]['src'][table_name]['sql']        
+                
+                if not appts:
+                    appts='current_timestamp'                
+                                        
 
                 ######################################################################
                 # ACHTUNG: sql-statement MUSS alle definierten ckey-felder auch wirklich enthalten
@@ -142,44 +121,38 @@ class BV_Link_Stager(BaseOperator):
                 #          -> zero-key treatment
                 ####################################################################                                  
                 #cks 
-                cks_val_str='--NONE--'
-                if 'cks' in conf['links'][link]:                
-                    #records=src_lnk_cols[table_name]
-                    cks_val=[f"coalesce(trim({x}::varchar({maxvarchar})),'-1')" for x in cks.keys()]
-                    cks_val_str=",\n\t".join(cks_val)
-
-                if not appts:
-                    appts='current_timestamp'
-                else:
-                    appts=appts+'::timestamp'                
+                cks = []
+                if 'cks' in conf['links'][link]:
+                    cks=conf['links'][link]['cks'].keys() 
                                 
-                custom_sql=conf['links'][link]['src'][table_name]['sql']
+
+
+                sql_template=open('/opt/airflow/dags/sql/bv_link_stager_insert.sql','r').read()
                 
-                sql=f"""INSERT INTO {schema_stage}.{table_name}__{link} SELECT 
-                --hk--
-                {hk_val_list_str},
-                --hks--
-                {hks_val_list_str},
-                --cks--
-                {cks_val_str},
-                --meta--
-                current_timestamp,
-                {appts},
-                '{table_name}',
-                '{tenant}',
-                '{bkeycode}',
-                '{task_id}'
-                FROM ({custom_sql}) as custom_sql
-                ;        
-                """
-                                                
-                self.hook.run(sql) 
-                
-                sql_concat += '\n'+sql
-                self.doc = sql_concat
+                context = {
+                    "schema_stage":schema_stage,            
+                    "lnk":lnk,
+                    "maxvarchar":maxvarchar,    
+                    "hk":hk,
+                    "hks":hks,
+                    "cks":cks,
+                    "table_name":table_name,
+                    "link":link,
+                    "custom_sql":custom_sql,
+                    "bks_list":bks_list,
+                    "tenant":tenant,
+                    "bkeycode":bkeycode,
+                    "task_id":task_id,
+                    "appts":appts,
+                    "custom_sql":custom_sql
+                    
+                }
+                template = Template(sql_template)        
+                sql=template.render(**context)                
+                sql_concat += f"\n{sql}"
         
                 
-        #self.hook.run(self.sql)                
+        self.hook.run(sql_concat)  
         #context['ti'].xcom_push(key='records', value=result)        
         #Variable.set('myvar',{'mykey':'myval'})
         
