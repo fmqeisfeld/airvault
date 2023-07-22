@@ -1,3 +1,0 @@
-airflow tasks test hello_world hello_task 2021-01-01
-
-airflow tasks test extract connect 2021-01-01
