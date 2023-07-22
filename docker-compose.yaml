@@ -64,8 +64,9 @@ x-airflow-common:
     AIRFLOW_CONN_PGCONN: ${_PGCONN:-postgresql+psycopg2://airflow:airflow@postgres/postgres}
     #AIRFLOW_CONN_PGCONN: postgresql+psycopg2://airflow:airflow@postgres/postgres
     AIRFLOW_VAR_MAXVARCHAR: ${_MAXVARCHAR:-256}
-    AIRFLOW_VAR_SCHEMA_SOURCE: ${_SCHEMA_SOURCE:-quelle}
+    AIRFLOW_VAR_SCHEMA_SOURCE: ${_SCHEMA_SOURCE:-source}
     AIRFLOW_VAR_SCHEMA_STAGE: ${_SCHEMA_STAGE:-stage}
+    AIRFLOW_VAR_SCHEMA_EDWH: ${_SCHEMA_EDWH:-edwh}
   volumes:
     - ./dags:/opt/airflow/dags
     - ./logs:/opt/airflow/logs

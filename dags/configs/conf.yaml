@@ -6,7 +6,7 @@ connection:
     user: postgres
     pw: postgres
     schemas:
-      source: quelle
+      source: source
       stage: stage 
       edwh: edwh
 
@@ -156,7 +156,7 @@ bv:
           bks:              # namen der/des bk-felds in quelle          
             - customer_id   # Bei Angabe mehrerer Quellfelder
 
-          sql: "SELECT * FROM quelle.customer"
+          sql: "SELECT * FROM source.customer"
     
   links:
     bv_l_rental: 
@@ -179,7 +179,7 @@ bv:
             staff_id: hk_staff
             customer_id: hk_customer
 
-          sql: "SELECT * FROM quelle.rental"
+          sql: "SELECT * FROM source.rental"
 
   sats:
     bv_s_rental:
@@ -197,7 +197,7 @@ bv:
             - customer_id
           attrs:            # mapping der attributnamen quelltabelle -> zieltabelle
             rental_date: rental_date          
-          sql: "SElECT * FROM quelle.rental"
+          sql: "SElECT * FROM source.rental"
 
       dependencies:  
         - load__bv_h_customer
