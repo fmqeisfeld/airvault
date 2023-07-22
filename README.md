@@ -91,28 +91,29 @@ The **hubs** subsection is used to define the hub tables that will be integrated
 ```YAML
 hubs:
 
-	h_customer: # desired name for the hub-table
-		hk: hk_customer # name for the hash-key in the hub-table
-		bk: bk_customer # name for the business-key in the hub-table
-		  	
-		src:                        # list of source-tables
-			customer:               # name of 1st source-table 
-				bkeycode: default   # optional collision code
-				tenant: default     # optional tenant-name
-				bks:                # list of business-key or business keys in case of composite-key
-					- customer_id   # name of 1st part of the composite-bk
-					- customer_code # name of 2nd part of the composite-bk 
-			client:                 # 2nd source-table
-				bks:                # list of business-key(s) for 2nd source
-					- client_id     # name of business-key in source-table
-	h_staff:	                    # 2nd hub-table
-		hk: hk_staff	            # ...
-		bk: bk_staff
-	
-		src:	
-			staff:	
-				bks:	
-					- staff_id
+ h_customer: # desired name for the hub-table
+  hk: hk_customer # name for the hash-key in the hub-table
+  bk: bk_customer # name for the business-key in the hub-table
+     
+  src:                        # list of source-tables
+   customer:               # name of 1st source-table 
+    bkeycode: default   # optional collision code
+    tenant: default     # optional tenant-name
+    bks:                # list of business-key or business keys in case of composite-key
+     - customer_id   # name of 1st part of the composite-bk
+     - customer_code # name of 2nd part of the composite-bk 
+   client:                 # 2nd source-table
+    bks:                # list of business-key(s) for 2nd source
+     - client_id     # name of business-key in source-table
+ h_staff:                     # 2nd hub-table
+  hk: hk_staff             # ...
+  bk: bk_staff
+ 
+  src: 
+   staff: 
+    bks: 
+     - staff_id
+     - employee_nr
 					- employee_nr
 ```
 - **h_customer** and **h_staff** are the names of the hub tables to be created in the raw vault.
