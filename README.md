@@ -13,7 +13,7 @@ As of now, Airvault exclusively supports PostgreSQL as the underlying database e
 - [Raw Vault Configuration (rv)](#raw-vault-configuration-rv)
 	- [Hubs](#hubs)
 	- [Links](#links)
-		- [Transactional Links with Dependent Child Keys](#transactional-links-with-depenednt-child-keys)
+		- [Transactional Links with Dependent Child Keys](#transactional-links-with-dependent-child-keys)
 	- [Satellites](#satellites)
 		- [Transactional Satellite (Tsat)](#transactional-satellite-tsat)
 		- [Multi-Active Satellite](#multi-active-satellite)
