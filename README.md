@@ -114,7 +114,6 @@ hubs:
     bks: 
      - staff_id
      - employee_nr
-					- employee_nr
 ```
 - **h_customer** and **h_staff** are the names of the hub tables to be created in the raw vault.
     
